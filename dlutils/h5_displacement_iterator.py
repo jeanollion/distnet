@@ -57,6 +57,7 @@ class H5DisplacementIterator(H5Iterator):
 				params = image_data_generator.get_random_transform(prev[i].shape)
 				params['flip_vertical'] = aug_param_array[i].get('flip_vertical', False) # flip must be the same
 				prev[i] = image_data_generator.apply_transform(prev[i], params)
+				prev[i] = image_data_generator.standardize(prev[i])
 				aug_param_array[i]['dy_shift'] = aug_param_array[i].get('ty', 0) - params.get('ty', 0)
 
 		return prev
@@ -64,7 +65,6 @@ class H5DisplacementIterator(H5Iterator):
 	def _get_output_batch(self, index_ds, index_array, aug_param_array):
 		edm = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 1, False, aug_param_array)
 		dis = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 2, False, aug_param_array)
-		# todo perform augmentation on concatenated data ? see if faster...
 		# modify displacement value according to delta shift between previous and current indicated in parameter array
 		# only takes into account shift in y direction and flip. shear and zoom transform are not taken into account thus they should not be too important
 		def add_shift(v, dy):

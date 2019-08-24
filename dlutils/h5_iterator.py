@@ -98,11 +98,7 @@ class H5Iterator(Iterator):
 			return (self._get_input_batch(ds_idx, index_array, aug_param_array=aug_param_array), self._get_output_batch(ds_idx, index_array, aug_param_array=aug_param_array))
 
 	def _get_input_batch(self, index_ds, index_array, aug_param_array=None):
-		batch = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 0, True,  aug_param_array)
-		if self.image_data_generators!=None and self.image_data_generators[0]!=None:
-			for i in range(batch.shape[0]):
-				batch[i] = self.image_data_generators[0].standardize(batch[i]) # replace by RobustScaler from quantiles in metadata ?
-		return batch
+		return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 0, True,  aug_param_array)
 
 	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
 		return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 1, False, aug_param_array)
@@ -123,6 +119,7 @@ class H5Iterator(Iterator):
 					else:
 						copy_affine_tranform_parameters(aug_param_array[i], params)
 				im = image_data_generator.apply_transform(im, params)
+				im = image_data_generator.standardize(im)
 			batch[i] = im
 		return batch
 
