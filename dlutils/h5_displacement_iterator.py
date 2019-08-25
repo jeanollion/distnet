@@ -1,13 +1,14 @@
 import numpy as np
-from dlutils import H5Iterator
+from dlutils import H5MultiChannelIterator
 from .utils import get_datasets_by_path
 import random
+from sklearn.model_selection import train_test_split
 
-class H5DisplacementIterator(H5Iterator):
+class H5DisplacementIterator(H5MultiChannelIterator):
 	def __init__(self,
 				h5py_file,
 				channel_keywords=['/raw', '/edm', '/dy'],
-				channel_scaling=[{'level':1, 'qmin':5, 'qmax':95}],
+				channel_scaling_param=[{'level':1, 'qmin':5, 'qmax':95}],
 				group_keyword=None,
 				image_data_generators=None,
 				batch_size=32,
@@ -17,7 +18,7 @@ class H5DisplacementIterator(H5Iterator):
 				dtype='float32'):
 		if len(channel_keywords)!=3:
 			raise ValueError('keyword should have exactly 3 elements: input images, object masks, object displacement')
-		super(H5DisplacementIterator, self).__init__(h5py_file, channel_keywords, channel_scaling, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		super().__init__(h5py_file, channel_keywords, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 		self.labels = get_datasets_by_path(self.h5py_file, [path.replace(self.channel_keywords[0], '/labels') for path in self.paths])
 		for i, ds in enumerate(self.labels):
 			 self.labels[i] = np.char.asarray(ds[()].astype('unicode')) # todo: check if necessary to convert to char array ? unicode is necessary
@@ -90,6 +91,32 @@ class H5DisplacementIterator(H5Iterator):
 			if aug_param_array[i].get('flip_vertical', False):
 				dis[i] = -dis[i]
 		return np.concatenate((edm, dis), axis=-1)
+
+	def train_test_split(self, **options):
+		train_idx, test_idx = train_test_split(self.allowed_indexes, **options)
+		train_iterator = H5DisplacementIterator(h5py_file=self.h5py_file,
+		                            channel_keywords=self.channel_keywords,
+		                            channel_scaling_param=self.channel_scaling_param,
+		                            group_keyword=self.group_keyword,
+		                            image_data_generators=self.image_data_generators,
+		                            batch_size=self.batch_size,
+		                            shuffle=self.shuffle,
+		                            perform_data_augmentation=self.perform_data_augmentation,
+		                            seed=self.seed,
+		                            dtype=self.dtype)
+		train_iterator.set_allowed_indexes(train_idx)
+		test_iterator = H5DisplacementIterator(h5py_file=self.h5py_file,
+		                            channel_keywords=self.channel_keywords,
+		                            channel_scaling_param=self.channel_scaling_param,
+		                            group_keyword=self.group_keyword,
+		                            image_data_generators=self.image_data_generators,
+		                            batch_size=self.batch_size,
+		                            shuffle=options.get('suffle_test', self.shuffle),
+		                            perform_data_augmentation=options.get('perform_data_augmentation_test', self.perform_data_augmentation),
+		                            seed=options.get('seed_test', self.seed),
+		                            dtype=self.dtype)
+		test_iterator.set_allowed_indexes(test_idx)
+		return train_iterator, test_iterator
 
 # class util methods
 def get_prev_label(label):
