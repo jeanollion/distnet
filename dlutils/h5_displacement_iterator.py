@@ -93,6 +93,9 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		return np.concatenate((edm, dis), axis=-1)
 
 	def train_test_split(self, **options):
+		shuffle_test=options.pop('shuffle_test', self.shuffle)
+		perform_data_augmentation_test=options.pop('perform_data_augmentation_test', self.perform_data_augmentation)
+		seed_test=options.pop('seed_test', self.seed)
 		train_idx, test_idx = train_test_split(self.allowed_indexes, **options)
 		train_iterator = H5DisplacementIterator(h5py_file=self.h5py_file,
 		                            channel_keywords=self.channel_keywords,
@@ -111,9 +114,9 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		                            group_keyword=self.group_keyword,
 		                            image_data_generators=self.image_data_generators,
 		                            batch_size=self.batch_size,
-		                            shuffle=options.get('suffle_test', self.shuffle),
-		                            perform_data_augmentation=options.get('perform_data_augmentation_test', self.perform_data_augmentation),
-		                            seed=options.get('seed_test', self.seed),
+		                            shuffle=shuffle_test,
+									perform_data_augmentation=perform_data_augmentation_test,
+									seed=seed_test,
 		                            dtype=self.dtype)
 		test_iterator.set_allowed_indexes(test_idx)
 		return train_iterator, test_iterator
