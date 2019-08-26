@@ -163,7 +163,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		"""
 		raise NotImplementedError
 
-	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, is_input, aug_param_array=None):
+	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, is_input, aug_param_array=None, perform_augmantation=True):
 		"""Generate a batch of transformed sample for a given channel
 
 		Parameters
@@ -189,7 +189,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 
 		"""
 		im_shape = self.shape[chan_idx]
-		image_data_generator = self.image_data_generators[chan_idx] if self.perform_data_augmentation and self.image_data_generators!=None else None
+		image_data_generator = self.image_data_generators[chan_idx] if self.perform_data_augmentation and perform_augmantation and self.image_data_generators!=None else None
 		channel = () if len(im_shape)==3 else (1,)
 		batch = np.zeros((len(index_array),) + im_shape + channel, dtype=self.dtype)
 		# build batch of image data
