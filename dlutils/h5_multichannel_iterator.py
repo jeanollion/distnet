@@ -69,7 +69,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 								raise ValueError("scaling group level too high for channel {}({}) group path: {}".format(c, channel_keywords[c]), _get_parent_path(path))
 						# percentiles are located in attributes of group
 						if not self.h5py_file[group].attrs.__contains__('raw_percentiles'):
-							raise ValueError("No percentile array found in group {} for channel: {}({]})".format(group, c, channel_keywords[c]))
+							raise ValueError("No percentile array found in group {} for channel: {}({})".format(group, c, channel_keywords[c]))
 						percentiles = self.h5py_file[group].attrs.get(channel_keywords[c].replace('/', '')+'_percentiles')
 						# get IQR and median
 						min, med, max = np.interp([scaling_info.get('qmin', 5), 50, scaling_info.get('qmax', 95)], percentile_x, percentiles)
