@@ -250,7 +250,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		else:
 			return self.paths[ds_idx].replace(self.channel_keywords[0], self.channel_keywords[channel_idx])
 
-	def predict(self, output_file_path, model, output_keys, write_every_n_batches = 10, output_shape = None):
+	def predict(self, output_file_path, model, output_keys, write_every_n_batches = 100, output_shape = None):
 		of = h5py.File(output_file_path, 'w')
 		if output_shape is None:
 			output_shape = self.shape[0]
@@ -262,44 +262,43 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		if np.any(self.index_array[1:] < self.index_array[:-1]):
 			raise ValueError('Index array should be monotonically increasing')
 
-		pred = [np.zeros(shape = (write_every_n_batches*self.batch_size,)+output_shape, dtype=self.dtype) for c in output_keys]
+		buffer = [np.zeros(shape = (write_every_n_batches*self.batch_size,)+output_shape, dtype=self.dtype) for c in output_keys]
 
 		for ds_i, ds_i_i, ds_i_len in zip(*np.unique(self._get_ds_idx(self.index_array), return_index=True, return_counts=True)):
 			self._ensure_dataset(of, output_shape, output_keys, ds_i)
 			paths = [self.paths[ds_i].replace(self.channel_keywords[0], output_key) for output_key in output_keys]
 			index_arrays = np.array_split(self.index_array[ds_i_i:(ds_i_i+ds_i_len)], ceil(ds_i_len/self.batch_size))
-
+			print("prediction for dataset:", self.paths[ds_i])
 			unsaved_batches = 0
-			current_idx = 0
+			buffer_idx = 0
 			current_indices=[]
 			start_pred = time.time()
 			for i, index_array in enumerate(index_arrays):
 				input = self._get_input_batch([ds_i]*len(index_array), index_array)
-				#cur_pred = model.predict(input)
-				cur_pred = input
+				cur_pred = model.predict(input)
+				#cur_pred = input
 
-				print('prediction: batch #{}')
 				if cur_pred.shape[-1]!=len(output_keys):
 					raise ValueError('prediction should have as many channels as output_keys argument')
 				if cur_pred.shape[1:-1]!=output_shape:
 					raise ValueError("prediction shape differs from output shape")
 
 				for c in range(len(output_keys)):
-					pred[c][current_idx:(current_idx+input.shape[0])] = cur_pred[..., c]
+					buffer[c][buffer_idx:(buffer_idx+input.shape[0])] = cur_pred[..., c]
 
-				current_idx+=input.shape[0]
+				buffer_idx+=input.shape[0]
 				unsaved_batches +=1
 				current_indices.append(index_array)
 				if unsaved_batches==write_every_n_batches or i==len(index_arrays)-1:
 					start_save = time.time()
 					idx_o = list(np.concatenate(current_indices))
 					for c in range(len(output_keys)):
-						of[paths[c]].write_direct(pred[c][0:current_idx], dest_sel=idx_o) #np.ascontiguousarray(
+						of[paths[c]].write_direct(buffer[c][0:buffer_idx], dest_sel=idx_o)
 					end_save = time.time()
-					print("#{} batches computed in {}ms and saved in {}ms".format(unsaved_batches, start_save-start_pred, end_save-start_save))
+					print("#{} batches ({} images) computed in {}ms and saved in {}ms".format(unsaved_batches, buffer_idx, start_save-start_pred, end_save-start_save))
 
 					unsaved_batches=0
-					current_idx=0
+					buffer_idx=0
 					current_indices = []
 					start_pred = time.time()
 		of.close()
