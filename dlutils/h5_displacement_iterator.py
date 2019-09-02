@@ -19,16 +19,17 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		if len(channel_keywords)!=3:
 			raise ValueError('keyword should have exactly 3 elements: input images, object masks, object displacement')
 		super().__init__(h5py_file, channel_keywords, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
-		
 
-	def _get_input_batch(self, index_ds, index_array, aug_param_array):
-		if aug_param_array==None:
-			raise ValueError("Parameter array cannot be None")
+
+	def _get_input_batch(self, index_ds, index_array, aug_param_array=None):
 		batch = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 0, True,  aug_param_array, perform_augmantation=False) # will not populate aug_param_array only if there is an image_data_generator
-		if not self.perform_data_augmentation or self.image_data_generators==None or self.image_data_generators[0]==None: # even if there is no data augmentation, aug_param_array is used to signal that there is no previous image in order to set displacements to zero
-			for i in range(len(aug_param_array)):
-				aug_param_array[i] = dict()
+		if not self.perform_data_augmentation or self.image_data_generators==None or self.image_data_generators[0]==None: # aug_param_array is used to signal that there is no previous image in order to set displacements to zero
+			if aug_param_array  is not None:
+				for i in range(len(aug_param_array)):
+					aug_param_array[i] = dict()
 		else: # perform data augmentation
+			if aug_param_array is None:
+				raise ValueError("aug_param_array argument should not be none when data augmentation is performed")
 			image_data_generator = self.image_data_generators[0]
 			for i, im in enumerate(batch):
 				aug_param_array[i] = image_data_generator.get_random_transform(im.shape)
@@ -50,19 +51,24 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		off = ds.attrs.get('scaling_center', [0])[0] # supposes there are no other scaling for edm
 		return np.any(ds[im_idx, [-1,0], :] - off, 1) # np.flip()
 
-	def _get_prev_images(self, index_ds, index_array, current_batch, aug_param_array, aug_remove_prev_prob=0.25):
+	def _get_prev_images(self, index_ds, index_array, current_batch, aug_param_array=None, aug_remove_prev_prob=0.25):
 		im_shape = self.shape[0]
 		channel = () if len(im_shape)==3 else (1,)
 		prev = np.zeros((len(index_array),) + im_shape + channel, dtype=self.dtype)
 		image_data_generator = self.image_data_generators[0] if self.perform_data_augmentation and self.image_data_generators!=None else None
+		if image_data_generator is not None and aug_param_array is None:
+			raise ValueError("aug_param_array argument should not be none when data augmentation is performed")
+
 		for i, (ds_idx, im_idx) in enumerate(zip(index_ds, index_array)):
 			prev_lab = get_prev_label(self.labels[ds_idx][im_idx])
 			if im_idx==0 or prev_lab!=self.labels[ds_idx][im_idx-1]: # current (augmented) image is set as prev image + signal in order to erase displacement map in further steps
 				prev[i] = current_batch[i]
-				aug_param_array[i]['no_prev'] = True
+				if aug_param_array is not None:
+					aug_param_array[i]['no_prev'] = True
 			elif self.perform_data_augmentation and random.random() < aug_remove_prev_prob: # current image is set as prev image + signal in order to set constant displacement map in further steps
 				prev[i] = self._read_image(0, ds_idx, im_idx)
-				aug_param_array[i]['no_prev_aug'] = True
+				if aug_param_array is not None:
+					aug_param_array[i]['no_prev_aug'] = True
 			else:
 				prev[i] = im = self._read_image(0, ds_idx, im_idx-1)
 
