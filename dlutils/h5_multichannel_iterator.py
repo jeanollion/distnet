@@ -256,12 +256,14 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		for i, (path, labels) in enumerate(zip(self.paths, self.labels)):
 			of.create_dataset(path.replace(self.channel_keywords[0], '/labels'), data = np.asarray(labels, dtype=np.string_))
 			for output_key in output_keys:
-				of.create_dataset(path.replace(self.channel_keywords[0], output_key), (len(labels),)+output_shape, dtype=self.dtype, compression="gzip")
+				of.create_dataset(path.replace(self.channel_keywords[0], output_key), (len(labels),)+output_shape, dtype=self.dtype) #, compression="gzip"
 
 		self.batch_index=0
 		self.perform_data_augmentation=False
 		self.shuffle=False
 		self._set_index_array()
+		if np.any(self.index_array[1:] < self.index_array[:-1]):
+			raise ValueError('Index array should be monotonically increasing')
 		for idx in range(len(self)):
 			index_array = self.index_array[self.batch_size * idx:self.batch_size * (idx + 1)]
 			ds_idx = self._get_ds_idx(index_array)
@@ -272,13 +274,13 @@ class H5MultiChannelIterator(IndexArrayIterator):
 				raise ValueError('prediction should have as many channels as output_keys argument')
 			if pred.shape[1:-1]!=output_shape:
 				raise ValueError("prediction shape differs from output shape")
-
 			for ds_i, ds_i_i, ds_i_len in zip(*np.unique(ds_idx, return_index=True, return_counts=True)):
-				sl = slice(ds_i_i, ds_i_i+ds_i_len)
+				idx_o = index_array[ds_i_i:(ds_i_i+ds_i_len)]
+				idx_i = range(ds_i_i, ds_i_i+ds_i_len)
 				for c in range(len(output_keys)):
 					path = self.paths[ds_i].replace(self.channel_keywords[0], output_keys[c])
-					#of[path].write_direct(pred[...,c], sl, index_array[sl])
-					of[path][index_array[sl]] = pred[sl]
+					for i, o in zip(idx_i, idx_o): # find a more efficient way to write ?
+						of[path][o] = pred[i][...,c]
 
 		of.close()
 
