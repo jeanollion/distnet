@@ -3,7 +3,8 @@ from dlutils import IndexArrayIterator
 from .utils import get_datasets_paths, get_datasets_by_path, get_parent_path
 from sklearn.model_selection import train_test_split
 import h5py
-
+from math import ceil
+import time
 class H5MultiChannelIterator(IndexArrayIterator):
 	def __init__(self,
 				h5py_file,
@@ -249,7 +250,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		else:
 			return self.paths[ds_idx].replace(self.channel_keywords[0], self.channel_keywords[channel_idx])
 
-	def predict(self, output_file_path, model, output_keys, output_shape = None):
+	def predict(self, output_file_path, model, output_keys, write_every_n_batches = 10, output_shape = None):
 		of = h5py.File(output_file_path, 'w')
 		if output_shape is None:
 			output_shape = self.shape[0]
@@ -257,35 +258,50 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		self.perform_data_augmentation=False
 		self.shuffle=False
 		self._set_index_array()
-		print("creating datasets: {}".format(np.unique(self._get_ds_idx(self.index_array))))
-		for ds_i in np.unique(self._get_ds_idx(self.index_array)):
-			self._ensure_dataset(of, output_shape, output_keys, ds_i)
-		print("datasets created")
-
 
 		if np.any(self.index_array[1:] < self.index_array[:-1]):
 			raise ValueError('Index array should be monotonically increasing')
 
-		for idx in range(len(self)):
-			index_array = self.index_array[self.batch_size * idx:self.batch_size * (idx + 1)]
-			ds_idx = self._get_ds_idx(index_array)
-			input = self._get_input_batch(ds_idx, index_array)
-			#pred = model.predict(input)
-			pred = input
-			print('prediction: batch #{}, prediction shape: {}'.format(idx, pred.shape))
-			if pred.shape[-1]!=len(output_keys):
-				raise ValueError('prediction should have as many channels as output_keys argument')
-			if pred.shape[1:-1]!=output_shape:
-				raise ValueError("prediction shape differs from output shape")
-			for ds_i, ds_i_i, ds_i_len in zip(*np.unique(ds_idx, return_index=True, return_counts=True)):
-				idx_o = list(index_array[ds_i_i:(ds_i_i+ds_i_len)])
-				idx_i = range(ds_i_i, ds_i_i+ds_i_len)
-				for c in range(len(output_keys)):
-					path = self.paths[ds_i].replace(self.channel_keywords[0], output_keys[c])
-					of[path].write_direct(np.ascontiguousarray(pred[idx_i][...,c]), dest_sel=idx_o)
-					#for i, o in zip(idx_i, idx_o): # find a more efficient way to write ?
-					#	of[path][o] = pred[i][...,c]
+		pred = [np.zeros(shape = (write_every_n_batches*self.batch_size,)+output_shape, dtype=self.dtype) for c in output_keys]
 
+		for ds_i, ds_i_i, ds_i_len in zip(*np.unique(self._get_ds_idx(self.index_array), return_index=True, return_counts=True)):
+			self._ensure_dataset(of, output_shape, output_keys, ds_i)
+			paths = [self.paths[ds_i].replace(self.channel_keywords[0], output_key) for output_key in output_keys]
+			index_arrays = np.array_split(self.index_array[ds_i_i:(ds_i_i+ds_i_len)], ceil(ds_i_len/self.batch_size))
+
+			unsaved_batches = 0
+			current_idx = 0
+			current_indices=[]
+			start_pred = time.time()
+			for i, index_array in enumerate(index_arrays):
+				input = self._get_input_batch([ds_i]*len(index_array), index_array)
+				#cur_pred = model.predict(input)
+				cur_pred = input
+
+				print('prediction: batch #{}')
+				if cur_pred.shape[-1]!=len(output_keys):
+					raise ValueError('prediction should have as many channels as output_keys argument')
+				if cur_pred.shape[1:-1]!=output_shape:
+					raise ValueError("prediction shape differs from output shape")
+
+				for c in range(len(output_keys)):
+					pred[c][current_idx:(current_idx+input.shape[0])] = cur_pred[..., c]
+
+				current_idx+=input.shape[0]
+				unsaved_batches +=1
+				current_indices.append(index_array)
+				if unsaved_batches==write_every_n_batches or i==len(index_arrays)-1:
+					start_save = time.time()
+					idx_o = list(np.concatenate(current_indices))
+					for c in range(len(output_keys)):
+						of[paths[c]].write_direct(pred[c][0:current_idx], dest_sel=idx_o) #np.ascontiguousarray(
+					end_save = time.time()
+					print("#{} batches computed in {}ms and saved in {}ms".format(unsaved_batches, start_save-start_pred, end_save-start_save))
+
+					unsaved_batches=0
+					current_idx=0
+					current_indices = []
+					start_pred = time.time()
 		of.close()
 
 	def _ensure_dataset(self, output_file, output_shape, output_keys, ds_i):
