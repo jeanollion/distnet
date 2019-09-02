@@ -9,6 +9,7 @@ class IndexArrayIterator(Iterator):
     def set_allowed_indexes(self, indexes):
         self.allowed_indexes=indexes
         self.n=len(indexes)
+        self.index_array=None
 
     def _set_index_array(self):
         if self.shuffle:

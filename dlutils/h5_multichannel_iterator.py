@@ -2,6 +2,7 @@ import numpy as np
 from dlutils import IndexArrayIterator
 from .utils import get_datasets_paths, get_datasets_by_path, get_parent_path
 from sklearn.model_selection import train_test_split
+import h5py
 
 class H5MultiChannelIterator(IndexArrayIterator):
 	def __init__(self,
@@ -54,6 +55,14 @@ class H5MultiChannelIterator(IndexArrayIterator):
 				if ds.shape[1:] != self.shape[c]:
 					raise ValueError('Dataset {dsi} with path {dspath} from channel {chan}({chank}) has shape {dsshape} that differs from first dataset with path {ds1path} with shape {ds1shape}'.format(dsi=ds_idx, dspath=self._get_dataset_path(c, ds_idx), chan=c, chank=self.channel_keywords[c], dsshape=ds.shape[1:], ds1path=self._get_dataset_path(c, 0), ds1shape=self.shape[c] ))
 
+		# labels (optional ? )
+		self.labels = get_datasets_by_path(self.h5py_file, [path.replace(self.channel_keywords[0], '/labels') for path in self.paths])
+		for i, ds in enumerate(self.labels):
+			 self.labels[i] = np.char.asarray(ds[()].astype('unicode')) # todo: check if necessary to convert to char array ? unicode is necessary
+		if len(self.labels)!=len(self.ds_array[0]):
+			raise ValueError('Invalid input file: number of label array differ from dataset number')
+		if any(len(self.labels[i].shape)==0 or self.labels[i].shape[0]!=self.ds_array[0][i].shape[0] for i in range(len(self.labels))):
+			raise ValueError('Invalid input file: at least one dataset has element numbers that differ from corresponding label array')
 		# set scaling information for each dataset
 		self.channel_scaling = [None]*len(channel_keywords)
 		if self.channel_scaling_param!=None:
@@ -103,6 +112,11 @@ class H5MultiChannelIterator(IndexArrayIterator):
 
 		raise NotImplementedError
 
+	def _get_ds_idx(self, index_array):
+		ds_idx = np.searchsorted(self.ds_len, index_array, side='right')
+		index_array -= self.ds_off[ds_idx] # remove ds offset to each index
+		return ds_idx
+
 	def _get_batches_of_transformed_samples(self, index_array):
 		"""Gets a batch of transformed samples.
 		# Arguments
@@ -110,10 +124,8 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		# Returns
 			A batch of transformed samples (tuple of input and output if output_keyword is specified).
 		"""
+		ds_idx = self._get_ds_idx(index_array)
 
-		ds_idx = np.searchsorted(self.ds_len, index_array, side='right')
-		# remove ds offset to each index
-		index_array -= self.ds_off[ds_idx]
 		if len(self.channel_keywords)==1:
 			return self._get_input_batch(ds_idx, index_array)
 		elif len(self.channel_keywords)==2 and self.channel_keywords[0]==self.channel_keywords[1]:
@@ -237,6 +249,8 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		else:
 			return self.paths[ds_idx].replace(self.channel_keywords[0], self.channel_keywords[channel_idx])
 
+	def predict(output_file_path, model):
+		raise NotImplementedError
 
 # basic implementation
 class H5Iterator(H5MultiChannelIterator):
@@ -287,6 +301,39 @@ class H5Iterator(H5MultiChannelIterator):
 								dtype=self.dtype)
 		test_iterator.set_allowed_indexes(test_idx)
 		return train_iterator, test_iterator
+
+	def predict(self, output_file_path, model, output_shape = None, output_keys=['/predictions']):
+		of = h5py.File(output_file_path, 'a')
+		if output_shape is None:
+			output_shape = self.shape[0]
+		for i, (path, labels) in enumerate(zip(self.paths, self.labels)):
+			of.create_dataset(path.replace(self.channel_keywords[0], '/labels'), data = np.asarray(labels, dtype=np.string_))
+			for output_key in output_keys:
+				of.create_dataset(path.replace(self.channel_keywords[0], output_key), (len(labels),)+output_shape, dtype=self.dtype, compression="gzip")
+
+		self.batch_index=0
+		self.perform_data_augmentation=False
+		self.shuffle=False
+		self._set_index_array()
+		for idx in range(len(self)):
+			index_array = self.index_array[self.batch_size * idx:self.batch_size * (idx + 1)]
+			ds_idx = self._get_ds_idx(index_array)
+			input = self._get_input_batch(ds_idx, index_array)
+			pred = model.predict(intput)
+			print('prediction: batch #{}, prediction shape: {}'.format(idx, pred.shape))
+			if pred.shape[-1]!=len(output_keys):
+				raise ValueError('prediction should have as many channels as output_keys argument')
+			if pred.shape[1:-1]!=output_shape:
+				raise ValueError("prediction shape differs from output shape")
+
+			for ds_i, ds_i_i, ds_i_len in zip(*np.unique(ds_idx, return_index=True, return_counts=True)):
+				slice = slice(ds_i_i, ds_i_i+ds_i_len)
+				#of[path][index_array[slice]] = pred[slice]
+				for c in range(len(output_keys)):
+					path = self.paths[ds_i].replace(self.channel_keywords[0], output_keys[c])
+					of[path].write_direct(pred[...,c], slice, index_array[slice])
+
+		of.close()
 
 # class util methods
 def copy_affine_tranform_parameters(aug_param_source, aug_param_dest):

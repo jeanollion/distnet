@@ -19,13 +19,7 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		if len(channel_keywords)!=3:
 			raise ValueError('keyword should have exactly 3 elements: input images, object masks, object displacement')
 		super().__init__(h5py_file, channel_keywords, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
-		self.labels = get_datasets_by_path(self.h5py_file, [path.replace(self.channel_keywords[0], '/labels') for path in self.paths])
-		for i, ds in enumerate(self.labels):
-			 self.labels[i] = np.char.asarray(ds[()].astype('unicode')) # todo: check if necessary to convert to char array ? unicode is necessary
-		if len(self.labels)!=len(self.ds_array[0]):
-			raise ValueError('Invalid input file: number of label array differ from dataset number')
-		if any(len(self.labels[i].shape)==0 or self.labels[i].shape[0]!=self.ds_array[0][i].shape[0] for i in range(len(self.labels))):
-			raise ValueError('Invalid input file: at least one dataset has element numbers that differ from corresponding label array')
+		
 
 	def _get_input_batch(self, index_ds, index_array, aug_param_array):
 		if aug_param_array==None:
