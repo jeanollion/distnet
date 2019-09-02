@@ -253,17 +253,13 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		of = h5py.File(output_file_path, 'w')
 		if output_shape is None:
 			output_shape = self.shape[0]
-		for i, (path, labels) in enumerate(zip(self.paths, self.labels)):
-			of.create_dataset(path.replace(self.channel_keywords[0], '/labels'), data = np.asarray(labels, dtype=np.string_))
-			for output_key in output_keys:
-				of.create_dataset(path.replace(self.channel_keywords[0], output_key), (len(labels),)+output_shape, dtype=self.dtype) #, compression="gzip"
-
 		self.batch_index=0
 		self.perform_data_augmentation=False
 		self.shuffle=False
 		self._set_index_array()
 		if np.any(self.index_array[1:] < self.index_array[:-1]):
 			raise ValueError('Index array should be monotonically increasing')
+
 		for idx in range(len(self)):
 			index_array = self.index_array[self.batch_size * idx:self.batch_size * (idx + 1)]
 			ds_idx = self._get_ds_idx(index_array)
@@ -275,6 +271,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 			if pred.shape[1:-1]!=output_shape:
 				raise ValueError("prediction shape differs from output shape")
 			for ds_i, ds_i_i, ds_i_len in zip(*np.unique(ds_idx, return_index=True, return_counts=True)):
+				self._ensure_dataset(of, output_shape, output_keys, ds_i)
 				idx_o = index_array[ds_i_i:(ds_i_i+ds_i_len)]
 				idx_i = range(ds_i_i, ds_i_i+ds_i_len)
 				for c in range(len(output_keys)):
@@ -284,6 +281,17 @@ class H5MultiChannelIterator(IndexArrayIterator):
 
 		of.close()
 
+	def _ensure_dataset(self, output_file, output_shape, output_keys, ds_i):
+		label_path = self.paths[ds_i].replace(self.channel_keywords[0], '/labels')
+		if label_path not in output_file:
+			output_file.create_dataset(label_path, data = np.asarray(self.labels[ds_i], dtype=np.string_))
+		dim_path = self.paths[ds_i].replace(self.channel_keywords[0], '/originalDimensions')
+		if dim_path not in output_file and dim_path in self.h5py_file:
+			output_file.create_dataset(dim_path, data=self.h5py_file[dim_path])
+		for output_key in output_keys:
+			ds_path = self.paths[ds_i].replace(self.channel_keywords[0], output_key)
+			if ds_path not in output_file:
+				output_file.create_dataset(ds_path, (self.ds_array[0][ds_i].shape[0],)+output_shape, dtype=self.dtype, compression="gzip")
 # basic implementation
 class H5Iterator(H5MultiChannelIterator):
 	def __init__(self,
