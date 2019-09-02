@@ -270,20 +270,21 @@ class H5MultiChannelIterator(IndexArrayIterator):
 			index_array = self.index_array[self.batch_size * idx:self.batch_size * (idx + 1)]
 			ds_idx = self._get_ds_idx(index_array)
 			input = self._get_input_batch(ds_idx, index_array)
-			pred = model.predict(input)
+			#pred = model.predict(input)
+			pred = input
 			print('prediction: batch #{}, prediction shape: {}'.format(idx, pred.shape))
 			if pred.shape[-1]!=len(output_keys):
 				raise ValueError('prediction should have as many channels as output_keys argument')
 			if pred.shape[1:-1]!=output_shape:
 				raise ValueError("prediction shape differs from output shape")
 			for ds_i, ds_i_i, ds_i_len in zip(*np.unique(ds_idx, return_index=True, return_counts=True)):
-
-				idx_o = index_array[ds_i_i:(ds_i_i+ds_i_len)]
+				idx_o = list(index_array[ds_i_i:(ds_i_i+ds_i_len)])
 				idx_i = range(ds_i_i, ds_i_i+ds_i_len)
 				for c in range(len(output_keys)):
 					path = self.paths[ds_i].replace(self.channel_keywords[0], output_keys[c])
-					for i, o in zip(idx_i, idx_o): # find a more efficient way to write ?
-						of[path][o] = pred[i][...,c]
+					of[path].write_direct(np.ascontiguousarray(pred[idx_i][...,c]), dest_sel=idx_o)
+					#for i, o in zip(idx_i, idx_o): # find a more efficient way to write ?
+					#	of[path][o] = pred[i][...,c]
 
 		of.close()
 
