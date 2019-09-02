@@ -257,6 +257,12 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		self.perform_data_augmentation=False
 		self.shuffle=False
 		self._set_index_array()
+		print("creating datasets: {}".format(np.unique(self._get_ds_idx(self.index_array))))
+		for ds_i in np.unique(self._get_ds_idx(self.index_array)):
+			self._ensure_dataset(of, output_shape, output_keys, ds_i)
+		print("datasets created")
+
+
 		if np.any(self.index_array[1:] < self.index_array[:-1]):
 			raise ValueError('Index array should be monotonically increasing')
 
@@ -271,7 +277,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 			if pred.shape[1:-1]!=output_shape:
 				raise ValueError("prediction shape differs from output shape")
 			for ds_i, ds_i_i, ds_i_len in zip(*np.unique(ds_idx, return_index=True, return_counts=True)):
-				self._ensure_dataset(of, output_shape, output_keys, ds_i)
+
 				idx_o = index_array[ds_i_i:(ds_i_i+ds_i_len)]
 				idx_i = range(ds_i_i, ds_i_i+ds_i_len)
 				for c in range(len(output_keys)):
