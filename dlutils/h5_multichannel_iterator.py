@@ -274,11 +274,11 @@ class H5MultiChannelIterator(IndexArrayIterator):
 				raise ValueError("prediction shape differs from output shape")
 
 			for ds_i, ds_i_i, ds_i_len in zip(*np.unique(ds_idx, return_index=True, return_counts=True)):
-				slice = slice(ds_i_i, ds_i_i+ds_i_len)
-				#of[path][index_array[slice]] = pred[slice]
+				sl = slice(ds_i_i, ds_i_i+ds_i_len)
+				#of[path][index_array[sl]] = pred[sl]
 				for c in range(len(output_keys)):
 					path = self.paths[ds_i].replace(self.channel_keywords[0], output_keys[c])
-					of[path].write_direct(pred[...,c], slice, index_array[slice])
+					of[path].write_direct(pred[...,c], sl, index_array[sl])
 
 		of.close()
 
