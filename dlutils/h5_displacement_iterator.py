@@ -82,33 +82,34 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 
 		return prev
 
-	def _get_output_batch(self, index_ds, index_array, aug_param_array):
+	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
 		edm = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 1, False, aug_param_array)
 		dis = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 2, False, aug_param_array)
-		# modify displacement value according to delta shift between previous and current indicated in parameter array
-		# only takes into account shift in y direction and flip. shear and zoom transform are not taken into account thus they should not be too important
-		def add_shift(v, dy):
-			return v+dy if v!=0 else 0
-		def set_cst_shift(v, dy):
-			return dy if v!=0 else 0
-		vset_cst_shift = np.vectorize(set_cst_shift)
-		vadd_shift = np.vectorize(add_shift)
+		if aug_param_array is not None:
+			# modify displacement value according to delta shift between previous and current indicated in parameter array
+			# only takes into account shift in y direction and flip. shear and zoom transform are not taken into account thus they should not be too important
+			def add_shift(v, dy):
+				return v+dy if v!=0 else 0
+			def set_cst_shift(v, dy):
+				return dy if v!=0 else 0
+			vset_cst_shift = np.vectorize(set_cst_shift)
+			vadd_shift = np.vectorize(add_shift)
 
-		for i in range(len(index_ds)):
-			if aug_param_array[i].get('no_prev', False):
-				dis[i].fill(0)
-			elif aug_param_array[i].get('no_prev_aug', False): # current was set as previous image due to image augmentation
-				dy = aug_param_array[i].get('dy_shift', 0)
-				if dy==0:
+			for i in range(len(index_ds)):
+				if aug_param_array[i].get('no_prev', False):
 					dis[i].fill(0)
-				else: # set all non-zero to dy
-					dis[i] = vset_cst_shift(dis[i], dy)
-			else:
-				dy = aug_param_array[i].get('dy_shift', 0)
-				if dy!=0: # add dy to all non-zero values
-					dis[i] = vadd_shift(dis[i], dy)
-			if aug_param_array[i].get('flip_vertical', False):
-				dis[i] = -dis[i]
+				elif aug_param_array[i].get('no_prev_aug', False): # current was set as previous image due to image augmentation
+					dy = aug_param_array[i].get('dy_shift', 0)
+					if dy==0:
+						dis[i].fill(0)
+					else: # set all non-zero to dy
+						dis[i] = vset_cst_shift(dis[i], dy)
+				else:
+					dy = aug_param_array[i].get('dy_shift', 0)
+					if dy!=0: # add dy to all non-zero values
+						dis[i] = vadd_shift(dis[i], dy)
+				if aug_param_array[i].get('flip_vertical', False):
+					dis[i] = -dis[i]
 		return np.concatenate((edm, dis), axis=-1)
 
 	def train_test_split(self, **options):
