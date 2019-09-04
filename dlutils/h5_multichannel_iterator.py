@@ -250,7 +250,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		else:
 			return self.paths[ds_idx].replace(self.channel_keywords[0], self.channel_keywords[channel_idx])
 
-	def predict(self, output_file_path, model, output_keys, write_every_n_batches = 100, output_shape = None):
+	def predict(self, output_file_path, model, output_keys, write_every_n_batches = 100, output_shape = None, apply_to_prediction=None):
 		of = h5py.File(output_file_path, 'a')
 		if output_shape is None:
 			output_shape = self.shape[0]
@@ -276,6 +276,8 @@ class H5MultiChannelIterator(IndexArrayIterator):
 			for i, index_array in enumerate(index_arrays):
 				input = self._get_input_batch([ds_i]*len(index_array), index_array)
 				cur_pred = model.predict(input)
+				if apply_to_prediction is not None:
+					cur_pred = apply_to_prediction(cur_pred)
 				if cur_pred.shape[-1]!=len(output_keys):
 					raise ValueError('prediction should have as many channels as output_keys argument')
 				if cur_pred.shape[1:-1]!=output_shape:
