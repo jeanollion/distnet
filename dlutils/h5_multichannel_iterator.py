@@ -30,7 +30,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		# get all dataset paths
 		self.paths = get_datasets_paths(self.h5py_file, channel_keywords[0], self.group_keyword)
 		if (len(self.paths)==0):
-			raise ValueError('No datasets found ending by {} {}'.format(suffix, "and containing {}".format(group_keyword) if group_keyword!=None else "" ))
+			raise ValueError('No datasets found ending by {} {}'.format(channel_keywords[0], "and containing {}".format(group_keyword) if group_keyword!=None else "" ))
 		# get all matching dataset lists from h5 file
 		self.ds_array = [get_datasets_by_path(self.h5py_file, [self._get_dataset_path(c, ds_idx) for ds_idx in range(len(self.paths))]) for c in range(len(self.channel_keywords))]
 		# check that all ds have compatible length between input and output

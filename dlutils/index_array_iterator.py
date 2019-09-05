@@ -15,4 +15,4 @@ class IndexArrayIterator(Iterator):
         if self.shuffle:
             self.index_array = np.random.permutation(self.allowed_indexes)
         else:
-            self.index_array = self.allowed_indexes
+            self.index_array = np.copy(self.allowed_indexes)
