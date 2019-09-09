@@ -24,3 +24,9 @@ def get_parent_path(path):
         return path[:idx]
     else:
         return None
+
+def get_earse_small_values_function(thld):
+    def earse_small_values(im):
+        im[im<thld]=0
+        return im
+    return remove_small_values

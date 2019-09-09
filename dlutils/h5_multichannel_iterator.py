@@ -250,7 +250,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		else:
 			return self.paths[ds_idx].replace(self.channel_keywords[0], self.channel_keywords[channel_idx])
 
-	def predict(self, output_file_path, model, output_keys, write_every_n_batches = 100, output_shape = None, apply_to_prediction=None):
+	def predict(self, output_file_path, model, output_keys, write_every_n_batches = 100, output_shape = None, apply_to_prediction=None, **create_dataset_options):
 		of = h5py.File(output_file_path, 'a')
 		if output_shape is None:
 			output_shape = self.shape[0]
@@ -265,7 +265,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		buffer = [np.zeros(shape = (write_every_n_batches*self.batch_size,)+output_shape, dtype=self.dtype) for c in output_keys]
 
 		for ds_i, ds_i_i, ds_i_len in zip(*np.unique(self._get_ds_idx(self.index_array), return_index=True, return_counts=True)):
-			self._ensure_dataset(of, output_shape, output_keys, ds_i)
+			self._ensure_dataset(of, output_shape, output_keys, ds_i, create_dataset_options)
 			paths = [self.paths[ds_i].replace(self.channel_keywords[0], output_key) for output_key in output_keys]
 			index_arrays = np.array_split(self.index_array[ds_i_i:(ds_i_i+ds_i_len)], ceil(ds_i_len/self.batch_size))
 			print("predictions for dataset:", self.paths[ds_i])
@@ -276,6 +276,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 			for i, index_array in enumerate(index_arrays):
 				input = self._get_input_batch([ds_i]*len(index_array), index_array)
 				cur_pred = model.predict(input)
+				#cur_pred= input
 				if apply_to_prediction is not None:
 					cur_pred = apply_to_prediction(cur_pred)
 				if cur_pred.shape[-1]!=len(output_keys):
@@ -303,7 +304,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 					start_pred = time.time()
 		of.close()
 
-	def _ensure_dataset(self, output_file, output_shape, output_keys, ds_i):
+	def _ensure_dataset(self, output_file, output_shape, output_keys, ds_i, **create_dataset_options):
 		label_path = self.paths[ds_i].replace(self.channel_keywords[0], '/labels')
 		if label_path not in output_file:
 			output_file.create_dataset(label_path, data = np.asarray(self.labels[ds_i], dtype=np.string_))
@@ -313,7 +314,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		for output_key in output_keys:
 			ds_path = self.paths[ds_i].replace(self.channel_keywords[0], output_key)
 			if ds_path not in output_file:
-				output_file.create_dataset(ds_path, (self.ds_array[0][ds_i].shape[0],)+output_shape, dtype=self.dtype) #, compression="gzip" # no compression for compatibility with java driver
+				output_file.create_dataset(ds_path, (self.ds_array[0][ds_i].shape[0],)+output_shape, dtype=self.dtype, create_dataset_options) #, compression="gzip" # no compression for compatibility with java driver
 # basic implementation
 class H5Iterator(H5MultiChannelIterator):
 	def __init__(self,
