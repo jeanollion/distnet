@@ -76,10 +76,9 @@ class UnetDecoder():
 
     def get_n_filters(self):
         n= self.unet_encoder.n_filters * 2**(len(self.unet_encoder.residuals) - len(self.layers))
-        print("upconv: layer: {}/{}, # filters: {}".format(len(self.layers), len(self.unet_encoder.residuals), n))
         return n
 
-def get_unet_model(input_shape, n_down, filters=64, n_output_channels=1, out_activations="linear"):
+def get_unet_model(input_shape, n_down, filters=64, n_output_channels=1, ge="linear"):
     encoder = UnetEncoder(n_down, filters, input_shape)
     decoder = UnetDecoder(encoder)
     if len(out_activations)==1 and n_output_channels>1:

@@ -315,7 +315,20 @@ class H5MultiChannelIterator(IndexArrayIterator):
 			ds_path = self.paths[ds_i].replace(self.channel_keywords[0], output_key)
 			if ds_path not in output_file:
 				output_file.create_dataset(ds_path, (self.ds_array[0][ds_i].shape[0],)+output_shape, dtype=self.dtype, **create_dataset_options) #, compression="gzip" # no compression for compatibility with java driver
-# basic implementation
+
+	def _has_object_at_y_borders(self, mask_channel_idx, ds_idx, im_idx):
+		ds = self.ds_array[mask_channel_idx][ds_idx]
+		off = ds.attrs.get('scaling_center', [0])[0] # supposes there are no other scaling for edm
+		return np.any(ds[im_idx, [-1,0], :] - off, 1) # np.flip()
+
+	def _forbid_vertical_translation(self, aug_param, mask_channel_idx, ds_idx, img_idx):
+		tx = aug_param['tx']
+		has_object_up, has_object_down = self._has_object_at_y_borders(1, mask_channel_idx, ds_idx, img_idx) # up & down as in the displayed image
+		if has_object_down and has_object_up:
+			aug_param['tx']=0
+		elif (has_object_up and not has_object_down and tx<0) or (has_object_down and not has_object_up and tx>0):
+			aug_param['tx'] = -tx
+# basic implementations
 class H5Iterator(H5MultiChannelIterator):
 	def __init__(self,
 				h5py_file,
@@ -334,7 +347,7 @@ class H5Iterator(H5MultiChannelIterator):
 		return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 0, True,  aug_param_array)
 
 	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
-		return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 1, False, aug_param_array)
+		return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, len(self.channel_keywords)-1, False, aug_param_array)
 
 	def train_test_split(self, **options):
 		shuffle_test=options.pop('shuffle_test', self.shuffle)
@@ -353,6 +366,73 @@ class H5Iterator(H5MultiChannelIterator):
 									dtype=self.dtype)
 		train_iterator.set_allowed_indexes(train_idx)
 		test_iterator = H5Iterator(h5py_file=self.h5py_file,
+								channel_keywords=self.channel_keywords,
+								channel_scaling_param=self.channel_scaling_param,
+								group_keyword=self.group_keyword,
+								image_data_generators=self.image_data_generators,
+								batch_size=self.batch_size,
+								shuffle=shuffle_test,
+								perform_data_augmentation=perform_data_augmentation_test,
+								seed=seed_test,
+								dtype=self.dtype)
+		test_iterator.set_allowed_indexes(test_idx)
+		return train_iterator, test_iterator
+
+class H5IteratorSegmentation(H5MultiChannelIterator):
+	def __init__(self,
+				h5py_file,
+				channel_keywords=['/raw', '/edm'],
+				channel_scaling_param=[{'level':1, 'qmin':5, 'qmax':95}],
+				group_keyword=None,
+				image_data_generators=None,
+				batch_size=32,
+				shuffle=True,
+				perform_data_augmentation=True,
+				seed=None,
+				dtype='float32'):
+		super().__init__(h5py_file, channel_keywords, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+
+	def _get_input_batch(self, index_ds, index_array, aug_param_array=None):
+		batch = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 0, True,  aug_param_array, perform_augmantation=False) # will not populate aug_param_array even if there is an image_data_generator
+		if not self.perform_data_augmentation or self.image_data_generators==None or self.image_data_generators[0]==None: # aug_param_array is used to signal that there is no previous image in order to set displacements to zero
+			if aug_param_array  is not None:
+				for i in range(len(aug_param_array)):
+					aug_param_array[i] = dict()
+		else: # perform data augmentation
+			if aug_param_array is None:
+				raise ValueError("aug_param_array argument should not be none when data augmentation is performed")
+			image_data_generator = self.image_data_generators[0]
+			for i, im in enumerate(batch):
+				aug_param_array[i] = image_data_generator.get_random_transform(im.shape)
+				# check that there are no object @ upper or lower border to avoid generating artefacts with translation along y axis
+				if aug_param_array[i].get('tx', 0)!=0:
+					self._forbid_vertical_translation(aug_param_array[i], 1, index_ds[i], index_array[i])
+				im = image_data_generator.apply_transform(im, aug_param_array[i])
+				batch[i] = image_data_generator.standardize(im)
+		return batch
+	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
+		return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 1, False, aug_param_array)
+
+
+
+
+	def train_test_split(self, **options):
+		shuffle_test=options.pop('shuffle_test', self.shuffle)
+		perform_data_augmentation_test=options.pop('perform_data_augmentation_test', self.perform_data_augmentation)
+		seed_test=options.pop('seed_test', self.seed)
+		train_idx, test_idx = train_test_split(self.allowed_indexes, **options)
+		train_iterator = H5IteratorSegmentation(h5py_file=self.h5py_file,
+									channel_keywords=self.channel_keywords,
+									channel_scaling_param=self.channel_scaling_param,
+									group_keyword=self.group_keyword,
+									image_data_generators=self.image_data_generators,
+									batch_size=self.batch_size,
+									shuffle=self.shuffle,
+									perform_data_augmentation=self.perform_data_augmentation,
+									seed=self.seed,
+									dtype=self.dtype)
+		train_iterator.set_allowed_indexes(train_idx)
+		test_iterator = H5IteratorSegmentation(h5py_file=self.h5py_file,
 								channel_keywords=self.channel_keywords,
 								channel_scaling_param=self.channel_scaling_param,
 								group_keyword=self.group_keyword,
