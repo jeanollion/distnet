@@ -323,15 +323,15 @@ class H5MultiChannelIterator(IndexArrayIterator):
 
 	def _forbid_transformations_if_object_touching_borders(self, aug_param, mask_channel_idx, ds_idx, img_idx):
 		tx = aug_param.get('tx', 0)
-		zy = aug_param.get('zy', 1)
-		if tx!=0 or zy<1:
+		zx = aug_param.get('zx', 1)
+		if tx!=0 or zx<1:
 			has_object_up, has_object_down = self._has_object_at_y_borders(mask_channel_idx, ds_idx, img_idx) # up & down as in the displayed image
 			if has_object_down and has_object_up:
 				aug_param['tx']=0
 			elif (has_object_up and not has_object_down and tx<0) or (has_object_down and not has_object_up and tx>0):
 				aug_param['tx'] = -tx
-			if (has_object_up or has_object_down) and zy<1:
-				aug_param['zy'] = 1
+			if (has_object_up or has_object_down) and zx<1:
+				aug_param['zx'] = 1
 
 # basic implementations
 class H5Iterator(H5MultiChannelIterator):
