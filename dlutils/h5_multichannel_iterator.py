@@ -321,13 +321,18 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		off = ds.attrs.get('scaling_center', [0])[0] # supposes there are no other scaling for edm
 		return np.any(ds[im_idx, [-1,0], :] - off, 1) # np.flip()
 
-	def _forbid_vertical_translation(self, aug_param, mask_channel_idx, ds_idx, img_idx):
-		tx = aug_param['tx']
-		has_object_up, has_object_down = self._has_object_at_y_borders(mask_channel_idx, ds_idx, img_idx) # up & down as in the displayed image
-		if has_object_down and has_object_up:
-			aug_param['tx']=0
-		elif (has_object_up and not has_object_down and tx<0) or (has_object_down and not has_object_up and tx>0):
-			aug_param['tx'] = -tx
+	def _forbid_transformations_if_object_touching_borders(self, aug_param, mask_channel_idx, ds_idx, img_idx):
+		tx = aug_param.get('tx', 0)
+		zy = aug_param.get('zx', 0)
+		if tx!=0 or zx<0:
+			has_object_up, has_object_down = self._has_object_at_y_borders(mask_channel_idx, ds_idx, img_idx) # up & down as in the displayed image
+			if has_object_down and has_object_up:
+				aug_param['tx']=0
+			elif (has_object_up and not has_object_down and tx<0) or (has_object_down and not has_object_up and tx>0):
+				aug_param['tx'] = -tx
+			if (has_object_up or has_object_down) and zx<0:
+				aug_param['zx'] = 0
+				
 # basic implementations
 class H5Iterator(H5MultiChannelIterator):
 	def __init__(self,
@@ -405,8 +410,7 @@ class H5SegmentationIterator(H5MultiChannelIterator):
 			for i, im in enumerate(batch):
 				aug_param_array[i] = image_data_generator.get_random_transform(im.shape)
 				# check that there are no object @ upper or lower border to avoid generating artefacts with translation along y axis
-				if aug_param_array[i].get('tx', 0)!=0:
-					self._forbid_vertical_translation(aug_param_array[i], 1, index_ds[i], index_array[i])
+				self._forbid_transformations_if_object_touching_borders(aug_param_array[i], 1, index_ds[i], index_array[i])
 				im = image_data_generator.apply_transform(im, aug_param_array[i])
 				batch[i] = image_data_generator.standardize(im)
 		return batch

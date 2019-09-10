@@ -34,8 +34,7 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 			for i, im in enumerate(batch):
 				aug_param_array[i] = image_data_generator.get_random_transform(im.shape)
 				# check that there are no object @ upper or lower border to avoid generating artefacts with translation along y axis
-				if aug_param_array[i].get('tx', 0)!=0:
-					self._forbid_vertical_translation(aug_param_array[i], 1, index_ds[i], index_array[i])
+				self._forbid_transformations_if_object_touching_borders(aug_param_array[i], 1, index_ds[i], index_array[i])
 				im = image_data_generator.apply_transform(im, aug_param_array[i])
 				batch[i] = image_data_generator.standardize(im)
 		batch_prev = self._get_prev_images(index_ds, index_array, batch, aug_param_array) #aslo performs data augmentation for prev + sets dy shift in parameter array
