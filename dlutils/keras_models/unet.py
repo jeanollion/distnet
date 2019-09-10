@@ -81,7 +81,7 @@ class UnetDecoder():
 def get_unet_model(input_shape, n_down, filters=64, n_output_channels=1, out_activations=["linear"]):
     encoder = UnetEncoder(n_down, filters, input_shape)
     decoder = UnetDecoder(encoder)
-    if !isinstance(out_activations, list):
+    if not isinstance(out_activations, list):
         out_activations=[out_activations]
     if len(out_activations)==1 and n_output_channels>1:
          out_activations = out_activations*n_output_channels
