@@ -378,7 +378,7 @@ class H5Iterator(H5MultiChannelIterator):
 		test_iterator.set_allowed_indexes(test_idx)
 		return train_iterator, test_iterator
 
-class H5IteratorSegmentation(H5MultiChannelIterator):
+class H5SegmentationIterator(H5MultiChannelIterator):
 	def __init__(self,
 				h5py_file,
 				channel_keywords=['/raw', '/edm'],
