@@ -421,7 +421,7 @@ class H5SegmentationIterator(H5MultiChannelIterator):
 		perform_data_augmentation_test=options.pop('perform_data_augmentation_test', self.perform_data_augmentation)
 		seed_test=options.pop('seed_test', self.seed)
 		train_idx, test_idx = train_test_split(self.allowed_indexes, **options)
-		train_iterator = H5IteratorSegmentation(h5py_file=self.h5py_file,
+		train_iterator = H5SegmentationIterator(h5py_file=self.h5py_file,
 									channel_keywords=self.channel_keywords,
 									channel_scaling_param=self.channel_scaling_param,
 									group_keyword=self.group_keyword,
@@ -432,7 +432,7 @@ class H5SegmentationIterator(H5MultiChannelIterator):
 									seed=self.seed,
 									dtype=self.dtype)
 		train_iterator.set_allowed_indexes(train_idx)
-		test_iterator = H5IteratorSegmentation(h5py_file=self.h5py_file,
+		test_iterator = H5SegmentationIterator(h5py_file=self.h5py_file,
 								channel_keywords=self.channel_keywords,
 								channel_scaling_param=self.channel_scaling_param,
 								group_keyword=self.group_keyword,
