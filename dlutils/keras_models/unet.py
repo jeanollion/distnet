@@ -82,7 +82,8 @@ class UnetDecoder():
 def get_unet_model(filters=64, input_shape, n_down, n_output_channels=1, out_activations="linear"):
     encoder = UnetEncoder(n_down, filters, input_shape)
     decoder = UnetDecoder(encoder)
-    if (len(out_activations)==1 and n_output_channels>1) out_activations = [out_activations]*n_output_channels
+    if len(out_activations)==1 and n_output_channels>1:
+         out_activations = [out_activations]*n_output_channels
     out = [Conv2D(filters=1, kernel_size=(1, 1), activation=out_activations[i])(decoder.layers[-1]) for i in range(n_output_channels)]
     if (n_output_channels==1):
         return Model(encoder.layers[0], out[0])
