@@ -323,7 +323,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 
 	def _forbid_vertical_translation(self, aug_param, mask_channel_idx, ds_idx, img_idx):
 		tx = aug_param['tx']
-		has_object_up, has_object_down = self._has_object_at_y_borders(1, mask_channel_idx, ds_idx, img_idx) # up & down as in the displayed image
+		has_object_up, has_object_down = self._has_object_at_y_borders(mask_channel_idx, ds_idx, img_idx) # up & down as in the displayed image
 		if has_object_down and has_object_up:
 			aug_param['tx']=0
 		elif (has_object_up and not has_object_down and tx<0) or (has_object_down and not has_object_up and tx>0):
