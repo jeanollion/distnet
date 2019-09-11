@@ -42,14 +42,12 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 
 		batch_prev = self._get_neighbor_images(index_ds, index_array, batch, True, aug_param_array) #aslo performs data augmentation for prev + sets dy shift in parameter array
 		batch_next = self._get_neighbor_images(index_ds, index_array, batch, False, aug_param_array) if self.include_next else None
-		print("include next: {}, batch next None ? {}".format(self.include_next, batch_next is None))
 		if aug: # augmentation if only performed after get prev & next batch so raw image can be copied instead of read them again
 			for i, im in enumerate(batch):
 				im = image_data_generator.apply_transform(im, aug_param_array[i])
 				batch[i] = image_data_generator.standardize(im)
 
 		if self.include_next:
-			print("batch prev: {}, batch: {}, batch next: {}".format(batch_prev.shape, batch.shape, batch_next.shape ))
 			return np.concatenate((batch_prev, batch, batch_next), axis=-1)
 		else:
 			return np.concatenate((batch_prev, batch), axis=-1)

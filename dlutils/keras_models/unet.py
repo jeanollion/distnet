@@ -166,7 +166,7 @@ def get_edm_displacement_untangled_model(filters_dy=24, filters_edm=24, image_sh
     dy_decoder = UnetDecoder(dy_encoder)
     dy = Conv2D(filters=2, kernel_size=(1, 1), activation="linear")(dy_decoder.layers[-1])
     out = Concatenate(axis=3)([edm_cur_out[-1], dy])
-    print("out shape:", out.get_shape())
     dy_model =  Model(dy_encoder.layers[0], out)
     dy_model.compile(optimizer=Adam(1e-3), loss='mean_squared_error')
+    # todo : weight loss edm vs dy 10:1
     return edm_model_simple, dy_model
