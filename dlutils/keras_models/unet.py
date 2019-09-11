@@ -18,6 +18,17 @@ def unet_down(input_layer, filters, kernel_size=3, pool=True, dropout=0, name=No
     else:
         return residual
 
+def unet_down_concat(input_layer, layers_to_concatenate, filters, kernel_size=3, pool=True, dropout=0, name=None):
+    conv1 = Conv2D(filters, (kernel_size, kernel_size), padding='same', activation='relu', name=name+"_conv" if name else None)(input_layer)
+    concat = Concatenate(axis=3, name=name+"_concat" if name else None)([conv1]+layers_to_concatenate)
+    residual = Conv2D(filters, (kernel_size, kernel_size), padding='same', activation='relu', name=name+"_res" if name else None)(concat)
+    pool_input = Dropout(dropout, name=name+"_drop" if name else None)(residual) if dropout>0 else residual
+    if pool:
+        max_pool = MaxPool2D(pool_size=(2,2), name=name)(pool_input)
+        return max_pool, residual
+    else:
+        return residual
+
 def get_slice_channel_layer(channel):
     return Lambda(lambda x: x[:,:,:,channel:(channel+1)])
 
@@ -31,33 +42,44 @@ def unet_up(input_layer, residual, filters):
     return conv2
 
 class UnetEncoder():
-    def __init__(self, n_down, n_filters, input, name="encoder"):
-        #if isinstance(input, keras.layers.Input):
-        #    self.layers=[input]
-        #else:
-        if min(input[0], input[1])/2**n_down<1:
-            raise ValueError("too many down convolutions. minimal dimension is {}, number of convlution is {} shape in minimal dimension would be {}".format(min(input[0], input[1]), n_down, min(input[0], input[1])/2**n_down))
-        self.layers=[Input(shape = input)]
-        self.input_shape=input
+    def __init__(self, n_down, n_filters, input, layers_to_concatenate=None, name="encoder"):
+        if isinstance(input, (list, tuple)):
+            if min(input[0], input[1])/2**n_down<1:
+                raise ValueError("too many down convolutions. minimal dimension is {}, number of convlution is {} shape in minimal dimension would be {}".format(min(input[0], input[1]), n_down, min(input[0], input[1])/2**n_down))
+            self.layers=[Input(shape = input)]
+            self.input_shape=input
+        else:
+            self.layers=[input]
+            self.input_shape=K.int_shape(input)[1:]
         self.name=name
         self.residuals=[]
         self.n_filters=n_filters
+        if layers_to_concatenate is None:
+            layers_to_concatenate = [None]*(n_down+1)
+        elif len(layers_to_concatenate) != (n_down+1):
+            raise ValueError("layers to concatenate argument should have a length of n_down")
         for i in range(n_down):
-            self.down()
-        self.make_feature_layer()
+            self.down(layers_to_concatenate[i])
+        self.make_feature_layer(layers_to_concatenate[n_down])
 
-    def down(self):
-        d, res = unet_down(self.layers[-1], self.get_n_filters(), kernel_size=self.get_kernel_size(), name=self.name+"_down"+str(len(self.layers)))
+    def down(self, layers_to_concatenate):
+        if layers_to_concatenate is not None:
+            d, res = unet_down_concat(self.layers[-1], layers_to_concatenate, self.get_n_filters(), kernel_size=self.get_kernel_size(), name=self.name+"_down"+str(len(self.layers)))
+        else:
+            d, res = unet_down(self.layers[-1], self.get_n_filters(), kernel_size=self.get_kernel_size(), name=self.name+"_down"+str(len(self.layers)))
         self.layers.append(d)
         self.residuals.append(res)
 
-    def make_feature_layer(self):
-        features = unet_down(self.layers[-1], self.get_n_filters(), pool=False, kernel_size=self.get_kernel_size())
+    def make_feature_layer(self, layers_to_concatenate):
+        if layers_to_concatenate is not None:
+            features = unet_down_concat(self.layers[-1], layers_to_concatenate, self.get_n_filters(), pool=False, kernel_size=self.get_kernel_size())
+        else:
+            features = unet_down(self.layers[-1], self.get_n_filters(), pool=False, kernel_size=self.get_kernel_size())
         self.layers.append(features)
 
     def get_kernel_size(self):
         min_dim = min(self.input_shape[0], self.input_shape[1])
-        current_size = (int)(min_dim / 2**len(self.residuals))
+        current_size = min_dim // 2**len(self.residuals)
         return 3 if current_size>=3 else current_size
 
     def get_n_filters(self):
@@ -118,28 +140,32 @@ def get_edm_displacement_model(filters=64, image_shape = (256, 32), edm_prop=0.5
     model.compile(optimizer=Adam(1e-3), loss=make_loss)
     return model
 
-def get_edm_displacement_untangled_model(filters=16, image_shape = (256, 32), edm_prop=0.5):
+def get_edm_displacement_untangled_model(filters_dy=24, filters_edm=24, image_shape = (256, 32), edm_prop=0.5):
     # make a regular Unet for edm regression
-    edm_encoder = UnetEncoder(4, filters, image_shape+(1,))
+    edm_encoder = UnetEncoder(4, filters_edm, image_shape+(1,), name="edm_e")
     edm_decoder = UnetDecoder(edm_encoder) #edm_encoder.layers[-1].get_shape()[1:]
     edm = Conv2D(filters=1, kernel_size=(1, 1), activation="linear")(edm_decoder.layers[-1])
     edm_model_simple=Model(edm_encoder.layers[0], edm)
     edm_model_simple.compile(optimizer=Adam(1e-3), loss='mean_squared_error')
-    edm_model = Model(edm_encoder.layers[0], [edm, edm_encoder.layers[-1]])
-
+    edm_model = Model(edm_encoder.layers[0], edm_encoder.residuals+[edm_encoder.layers[-1], edm])
+    edm_encoder = Model(edm_encoder.layers[0], edm_encoder.residuals+[edm_encoder.layers[-1]])
     # make a unet model for displacement with concatenated feature layer
 
-    dy_encoder = UnetEncoder(4, filters, image_shape+(2,))
-    input_prev = get_slice_channel_layer(0)(dy_encoder.layers[0])
-    input_cur = get_slice_channel_layer(1)(dy_encoder.layers[0])
-    edm_prev, edm_features_prev = edm_model(input_prev)
-    edm_next, edm_features_next = edm_model(input_cur)
-    dy_in = Concatenate(axis=3)([dy_encoder.layers[-1], edm_features_prev, edm_features_next])
-    dy_in = Conv2D(filters=dy_encoder.get_n_filters(), kernel_size=(1, 1), activation="relu")(dy_in)
-
-    dy_decoder = UnetDecoder(dy_encoder, input_layer = dy_in)
-    dy = Conv2D(filters=1, kernel_size=(1, 1), activation="linear")(dy_decoder.layers[-1])
-    out = Concatenate(axis=3)([edm_prev, edm_next, dy])
+    dy_input = Input(shape = image_shape+(3,))
+    input_prev = get_slice_channel_layer(0)(dy_input)
+    input_cur = get_slice_channel_layer(1)(dy_input)
+    input_next = get_slice_channel_layer(2)(dy_input)
+    edm_prev_out = edm_encoder(input_prev)
+    edm_cur_out = edm_model(input_cur)
+    edm_next_out = edm_encoder(input_next)
+    layers_to_concatenate = [[edm_prev_out[i], edm_cur_out[i], edm_next_out[i]] for i in range(0, len(edm_cur_out)-1)]
+    dy_encoder = UnetEncoder(4, filters_dy, dy_input, layers_to_concatenate=layers_to_concatenate, name="dy_e")
+    # dy_in = Concatenate(axis=3)([dy_encoder.layers[-1], edm_features_prev, edm_features_next])
+    # dy_in = Conv2D(filters=dy_encoder.get_n_filters(), kernel_size=(1, 1), activation="relu")(dy_in)
+    # dy_decoder = UnetDecoder(dy_encoder, input_layer = dy_in)
+    dy_decoder = UnetDecoder(dy_encoder)
+    dy = Conv2D(filters=2, kernel_size=(1, 1), activation="linear")(dy_decoder.layers[-1])
+    out = Concatenate(axis=3)([edm_cur_out[-1], dy])
     print("out shape:", out.get_shape())
     dy_model =  Model(dy_encoder.layers[0], out)
     dy_model.compile(optimizer=Adam(1e-3), loss='mean_squared_error')
