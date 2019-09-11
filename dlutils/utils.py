@@ -29,4 +29,4 @@ def get_earse_small_values_function(thld):
     def earse_small_values(im):
         im[im<thld]=0
         return im
-    return remove_small_values
+    return earse_small_values

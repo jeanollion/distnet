@@ -125,7 +125,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		# Returns
 			A batch of transformed samples (tuple of input and output if output_keyword is specified).
 		"""
-		ds_idx = self._get_ds_idx(index_array)
+		ds_idx = self._get_ds_idx(index_array) # modifies index_array
 
 		if len(self.channel_keywords)==1:
 			return self._get_input_batch(ds_idx, index_array)

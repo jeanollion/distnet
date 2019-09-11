@@ -63,9 +63,9 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		key_aug = "no_prev_aug" if prev else "no_next_aug"
 		inc = -1 if prev else 1
 		for i, (ds_idx, im_idx) in enumerate(zip(index_ds, index_array)):
-			batch_lab = get_neighbor_label(self.labels[ds_idx][im_idx], prev=prev)
+			neigh_lab = get_neighbor_label(self.labels[ds_idx][im_idx], prev=prev)
 			bound_idx = 0 if prev else len(self.labels[ds_idx])-1
-			if im_idx==bound_idx or batch_lab!=self.labels[ds_idx][im_idx+inc]: # current (augmented) image is set as prev/next image + signal in order to erase displacement map in further steps
+			if im_idx==bound_idx or neigh_lab!=self.labels[ds_idx][im_idx+inc]: # current (augmented) image is set as prev/next image + signal in order to erase displacement map in further steps
 				batch[i] = np.copy(current_batch[i])
 				if aug_param_array is not None:
 					aug_param_array[i][key] = True
@@ -169,6 +169,11 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		perform_data_augmentation_test=options.pop('perform_data_augmentation_test', self.perform_data_augmentation)
 		seed_test=options.pop('seed_test', self.seed)
 		train_idx, test_idx = train_test_split(self.allowed_indexes, **options)
+		# remove neighboring values that are seen by the network. only in terms of ground truth, ie depends on returned values: self.return_edm_neigh and self.include_next: previous and next frames. only self.include_next: next frame only (displacement)
+		if self.return_edm_neigh: # an index visited in train_idx implies the previous one is also seen during training. to avoind that previous index being in test_idx, next indices of test_idx should remove from train_idx
+			train_idx = np.setdiff1d(train_idx, self._get_neighbor_indices(test_idx, prev=False))
+		if self.include_next: # an index visited in train_idx implies the next one is also seen during training. to avoind that next index being in test_idx, previous indices of test_idx should remove from train_idx
+			train_idx = np.setdiff1d(train_idx, self._get_neighbor_indices(test_idx, prev=True))
 		# need to exclude indices before / after test_idx from train_idx ?
 		train_iterator = H5DisplacementIterator(h5py_file=self.h5py_file,
 		                            channel_keywords=self.channel_keywords,
@@ -198,6 +203,17 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		test_iterator.set_allowed_indexes(test_idx)
 		return train_iterator, test_iterator
 
+	def _get_neighbor_indices(self, index_array, prev):
+		index_array_local = np.copy(index_array)
+		ds_idx_array = self._get_ds_idx(index_array_local)
+		res = []
+		inc = -1 if prev else 1
+		for i, (ds_idx, im_idx) in enumerate(zip(ds_idx_array, index_array_local)):
+			neigh_lab = get_neighbor_label(self.labels[ds_idx][im_idx], prev=prev)
+			bound_idx = 0 if prev else len(self.labels[ds_idx])-1
+			if im_idx!=bound_idx and neigh_lab==self.labels[ds_idx][im_idx+inc]:
+				res.append(index_array[i]+inc)
+		return res
 # class util methods
 def get_neighbor_label(label, prev):
 	frame = int(label[-5:])
