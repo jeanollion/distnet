@@ -29,16 +29,16 @@ def unet_down_concat(input_layer, layers_to_concatenate, filters, kernel_size=3,
     else:
         return residual
 
-def get_slice_channel_layer(channel):
-    return Lambda(lambda x: x[:,:,:,channel:(channel+1)])
+def get_slice_channel_layer(channel, name=None):
+    return Lambda(lambda x: x[:,:,:,channel:(channel+1)], name = (name if name else "get_channel")+"_"+str(channel))
 
-def unet_up(input_layer, residual, filters):
+def unet_up(input_layer, residual, filters, name=None):
     filters=int(filters)
-    upsample = UpSampling2D(size=(2,2))(input_layer)
-    upconv = Conv2D(filters, kernel_size=(2, 2), padding="same")(upsample)
-    concat = Concatenate(axis=3)([residual, upconv])
-    conv1 = Conv2D(filters, (3, 3), padding='same', activation='relu')(concat)
-    conv2 = Conv2D(filters, (3, 3), padding='same', activation='relu')(conv1)
+    upsample = UpSampling2D(size=(2,2), name = name+"_up" if name else None)(input_layer)
+    upconv = Conv2D(filters, kernel_size=(2, 2), padding="same", name = name+"_conv1" if name else None)(upsample)
+    concat = Concatenate(axis=3, name = name+"_concat" if name else None)([residual, upconv])
+    conv1 = Conv2D(filters, (3, 3), padding='same', activation='relu', name = name+"_conv2" if name else None)(concat)
+    conv2 = Conv2D(filters, (3, 3), padding='same', activation='relu', name = name+"_conv3" if name else None)(conv1)
     return conv2
 
 class UnetEncoder():
@@ -46,7 +46,7 @@ class UnetEncoder():
         if isinstance(input, (list, tuple)):
             if min(input[0], input[1])/2**n_down<1:
                 raise ValueError("too many down convolutions. minimal dimension is {}, number of convlution is {} shape in minimal dimension would be {}".format(min(input[0], input[1]), n_down, min(input[0], input[1])/2**n_down))
-            self.layers=[Input(shape = input)]
+            self.layers=[Input(shape = input, name=name+"_input")]
             self.input_shape=input
         else:
             self.layers=[input]
@@ -72,7 +72,7 @@ class UnetEncoder():
 
     def make_feature_layer(self, layers_to_concatenate):
         if layers_to_concatenate is not None:
-            features = unet_down_concat(self.layers[-1], layers_to_concatenate, self.get_n_filters(), pool=False, kernel_size=self.get_kernel_size())
+            features = unet_down_concat(self.layers[-1], layers_to_concatenate, self.get_n_filters(), pool=False, kernel_size=self.get_kernel_size(), name=self.name+"_feature")
         else:
             features = unet_down(self.layers[-1], self.get_n_filters(), pool=False, kernel_size=self.get_kernel_size())
         self.layers.append(features)
@@ -86,14 +86,15 @@ class UnetEncoder():
         return self.n_filters * 2**len(self.residuals)
 
 class UnetDecoder():
-    def __init__(self, unet_encoder, input_layer=None):
+    def __init__(self, unet_encoder, input_layer=None, name=None):
         self.layers=[input_layer if input_layer is not None else unet_encoder.layers[-1]]
         self.unet_encoder = unet_encoder
+        self.name=name if name else unet_encoder.name
         for i in range(len(unet_encoder.residuals)):
             self.up()
 
     def up(self):
-        up = unet_up(self.layers[-1], residual=self.unet_encoder.residuals[-len(self.layers)], filters=self.get_n_filters())
+        up = unet_up(self.layers[-1], residual=self.unet_encoder.residuals[-len(self.layers)], filters=self.get_n_filters(), name = self.name+"_up"+str(len(self.layers)))
         self.layers.append(up)
 
     def get_n_filters(self):
@@ -140,33 +141,38 @@ def get_edm_displacement_model(filters=64, image_shape = (256, 32), edm_prop=0.5
     model.compile(optimizer=Adam(1e-3), loss=make_loss)
     return model
 
-def get_edm_displacement_untangled_model(filters_dy=24, filters_edm=24, image_shape = (256, 32), edm_prop=0.5):
+def get_edm_displacement_untangled_model(filters_dy=24, filters_edm=24, image_shape = (256, 32), edm_prop=0.5, concat_output=False):
+    # TODO: encoder / decoders also record layers (not only activations) and are able to perform activations in order to avoid having to use a model layer that cannot be imported in DL4J
     # make a regular Unet for edm regression
-    edm_encoder = UnetEncoder(4, filters_edm, image_shape+(1,), name="edm_e")
+    edm_encoder = UnetEncoder(4, filters_edm, image_shape+(1,), name="edm")
     edm_decoder = UnetDecoder(edm_encoder) #edm_encoder.layers[-1].get_shape()[1:]
-    edm = Conv2D(filters=1, kernel_size=(1, 1), activation="linear")(edm_decoder.layers[-1])
+    edm = Conv2D(filters=1, kernel_size=(1, 1), activation="linear", name = "edm_output")(edm_decoder.layers[-1])
     edm_model_simple=Model(edm_encoder.layers[0], edm)
     edm_model_simple.compile(optimizer=Adam(1e-3), loss='mean_squared_error')
-    edm_model = Model(edm_encoder.layers[0], edm_encoder.residuals+[edm_encoder.layers[-1], edm])
-    edm_encoder = Model(edm_encoder.layers[0], edm_encoder.residuals+[edm_encoder.layers[-1]])
+    edm_model = Model(edm_encoder.layers[0], edm_encoder.residuals+[edm_encoder.layers[-1], edm], name="edm_model")
+    edm_encoder = Model(edm_encoder.layers[0], edm_encoder.residuals+[edm_encoder.layers[-1]], name="edm_encoder")
     # make a unet model for displacement with concatenated feature layer
 
-    dy_input = Input(shape = image_shape+(3,))
-    input_prev = get_slice_channel_layer(0)(dy_input)
-    input_cur = get_slice_channel_layer(1)(dy_input)
-    input_next = get_slice_channel_layer(2)(dy_input)
+    dy_input = Input(shape = image_shape+(3,), name = "dy_input")
+    input_prev = get_slice_channel_layer(0, name = "dy_input")(dy_input)
+    input_cur = get_slice_channel_layer(1, name = "dy_input")(dy_input)
+    input_next = get_slice_channel_layer(2, name = "dy_input")(dy_input)
     edm_prev_out = edm_encoder(input_prev)
     edm_cur_out = edm_model(input_cur)
     edm_next_out = edm_encoder(input_next)
     layers_to_concatenate = [[edm_prev_out[i], edm_cur_out[i], edm_next_out[i]] for i in range(0, len(edm_cur_out)-1)]
-    dy_encoder = UnetEncoder(4, filters_dy, dy_input, layers_to_concatenate=layers_to_concatenate, name="dy_e")
+    dy_encoder = UnetEncoder(4, filters_dy, dy_input, layers_to_concatenate=layers_to_concatenate, name="dy")
     # dy_in = Concatenate(axis=3)([dy_encoder.layers[-1], edm_features_prev, edm_features_next])
     # dy_in = Conv2D(filters=dy_encoder.get_n_filters(), kernel_size=(1, 1), activation="relu")(dy_in)
     # dy_decoder = UnetDecoder(dy_encoder, input_layer = dy_in)
     dy_decoder = UnetDecoder(dy_encoder)
-    dy = Conv2D(filters=2, kernel_size=(1, 1), activation="linear")(dy_decoder.layers[-1])
-    out = Concatenate(axis=3)([edm_cur_out[-1], dy])
-    dy_model =  Model(dy_encoder.layers[0], out)
-    dy_model.compile(optimizer=Adam(1e-3), loss='mean_squared_error')
+    dy = Conv2D(filters=2, kernel_size=(1, 1), activation="linear", name = "dy_output")(dy_decoder.layers[-1])
+    if concat_output:
+        out = Concatenate(axis=3, name="edm_dy_output")([edm_cur_out[-1], dy])
+        dy_model =  Model(dy_encoder.layers[0], out)
+        dy_model.compile(optimizer=Adam(1e-3), loss='mean_squared_error')
+    else:
+        dy_model =  Model(dy_encoder.layers[0], [edm_cur_out[-1], dy])
+        dy_model.compile(optimizer=Adam(1e-3), loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[10, 1])
     # todo : weight loss edm vs dy 10:1
     return edm_model_simple, dy_model
