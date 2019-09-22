@@ -74,6 +74,6 @@ def export_model_graph(model, outdir, filename="saved_model.pb", output_names=No
 
 def export_model_bundle(model, outdir):
     outputs = dict(zip([out.op.name for out in model.outputs], model.outputs))
-    inputs = dict(zip([in.op.name for in in model.inputs], model.inputs))
+    inputs = dict(zip([input.op.name for input in model.inputs], model.inputs))
     tf.saved_model.simple_save(K.get_session(), export_dir=outdir, inputs=inputs, outputs=outputs)
     #print("inputs: {}, outputs: {}".format(inputs, outputs))
