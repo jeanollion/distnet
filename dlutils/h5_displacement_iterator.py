@@ -10,6 +10,7 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 				channel_keywords=['/raw', '/edm', '/dy'],
 				channel_scaling_param=[{'level':1, 'qmin':5, 'qmax':95}],
 				include_next=False,
+				return_edm=False,
 				return_edm_neigh=False,
 				group_keyword=None,
 				image_data_generators=None,
@@ -22,6 +23,7 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 			raise ValueError('keyword should have exactly 3 elements: input images, object masks, object displacement')
 		self.include_next=include_next
 		self.return_edm_neigh=return_edm_neigh
+		self.return_edm=return_edm
 		super().__init__(h5py_file, channel_keywords, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_input_batch(self, index_ds, index_array, aug_param_array=None):
@@ -84,12 +86,12 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 				params['flip_vertical'] = aug_param_array[i].get('flip_vertical', False) # flip must be the same
 				params['zy'] = aug_param_array[i].get('zy', 1) # zoom should be the same so that cell aspect does not changes too much
 				params['brightness_'] = aug_param_array[i].get('brightness_', 0)
-				params['contrast_'] = aug_param_array[i].get('contrast_', 1)
+				params['contrast'] = aug_param_array[i].get('contrast', 1)
 				if aug_param_array[i].get('brightness', 0)!=0:
 					params['brightness'] = aug_param_array[i]['brightness']
 				else:
 					params['brightness'] = None
-				
+
 				if aug_param_array[i].get(key, False): # there is no displacement data so shift must be 0
 					params['tx']=aug_param_array[i].get('tx', 0)
 				elif aug_param_array[i].get(key_aug, False): # displacement image is the current one
@@ -124,18 +126,26 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		if not self.include_next:
 			if self.return_edm_neigh:
 				edm_prev = self._get_batches_of_transformed_samples_by_channel_neighbor(index_ds, index_array, 1, False, aug_param_array, prev=True)
-				return np.concatenate((edm_prev, edm, dis), axis=-1)
+				return [edm_prev, edm, dis]
+				#return np.concatenate((edm_prev, edm, dis), axis=-1)
+			elif self.return_edm:
+				return [edm, dis]
 			else:
-				return np.concatenate((edm, dis), axis=-1)
+				return dis
+				#return np.concatenate((edm, dis), axis=-1)
 		else:
 			dis_next = self._get_batches_of_transformed_samples_by_channel_neighbor(index_ds, index_array, 2, False, aug_param_array, prev=False)
 			self._correct_dy_after_augmentation(dis_next, aug_param_array, prev=False)
 			if self.return_edm_neigh:
 				edm_prev = self._get_batches_of_transformed_samples_by_channel_neighbor(index_ds, index_array, 1, False, aug_param_array, prev=True)
 				edm_next = self._get_batches_of_transformed_samples_by_channel_neighbor(index_ds, index_array, 1, False, aug_param_array, prev=False)
-				return np.concatenate((edm_prev, edm, edm_next, dis, dis_next), axis=-1)
+				return [edm_prev, edm, edm_next, dis, dis_next]
+				#return np.concatenate((edm_prev, edm, edm_next, dis, dis_next), axis=-1)
+			elif self.return_edm:
+				return [edm, dis, dis_next]
 			else:
-				return np.concatenate((edm, dis, dis_next), axis=-1)
+				return [dis, dis_next]
+				#return np.concatenate((edm, dis, dis_next), axis=-1)
 
 	def _correct_dy_after_augmentation(self, batch, aug_param_array, prev=True):
 		no_neigh = 'no_prev' if prev else 'no_next'
@@ -185,6 +195,7 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		                            channel_keywords=self.channel_keywords,
 		                            channel_scaling_param=self.channel_scaling_param,
 									include_next=self.include_next,
+									return_edm=self.return_edm,
 									return_edm_neigh=self.return_edm_neigh,
 		                            group_keyword=self.group_keyword,
 		                            image_data_generators=self.image_data_generators,
@@ -198,6 +209,7 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 		                            channel_keywords=self.channel_keywords,
 		                            channel_scaling_param=self.channel_scaling_param,
 									include_next=self.include_next,
+									return_edm=self.return_edm,
 									return_edm_neigh=self.return_edm_neigh,
 		                            group_keyword=self.group_keyword,
 		                            image_data_generators=self.image_data_generators,
