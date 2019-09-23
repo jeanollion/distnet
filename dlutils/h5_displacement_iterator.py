@@ -83,7 +83,9 @@ class H5DisplacementIterator(H5MultiChannelIterator):
 				params = image_data_generator.get_random_transform(batch[i].shape)
 				params['flip_vertical'] = aug_param_array[i].get('flip_vertical', False) # flip must be the same
 				params['zy'] = aug_param_array[i].get('zy', 1) # zoom should be the same so that cell aspect does not changes too much
-
+				params['brightness_'] = aug_param_array[i].get('brightness_', 0)
+				params['contrast_'] = aug_param_array[i].get('contrast_', 1)
+				
 				if aug_param_array[i].get(key, False): # there is no displacement data so shift must be 0
 					params['tx']=aug_param_array[i].get('tx', 0)
 				elif aug_param_array[i].get(key_aug, False): # displacement image is the current one

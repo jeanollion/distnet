@@ -19,7 +19,21 @@ def random_gaussian_blur(img, sig_min=1, sig_max=2):
     sig = random.uniform(sig_min, sig_max)
     return gaussian_blur(img, sig)
 
+def adjust_brightness_contrast(img, brightness=0, contrast=1):
+    if brightness!=0 and contrast!=1:
+        return img * contrast + brightness
+    elif brightness!=0:
+        return img + brightness
+    elif contrast!=1:
+        return img * contrast
+    else:
+        return img
+
 def random_brightness_contrast(img, brightness_range=[-0.5, 0.5], contrast_range=1.5, invert=True):
+    b, c = compute_random_brightness_contrast(brightness_range, contrast_range, invert)
+    return adjust_brightness_contrast(img, b, c)
+
+def compute_random_brightness_contrast(brightness_range=[-0.5, 0.5], contrast_range=1.5, invert=True):
     if brightness_range:
         if is_list(brightness_range):
             if len(brightness_range)!=2:
@@ -35,25 +49,21 @@ def random_brightness_contrast(img, brightness_range=[-0.5, 0.5], contrast_range
                 contrast_range = (1/abs(contrast_range), abs(contrast_range))
             else:
                 contrast_range = (abs(contrast_range), 1/abs(contrast_range))
-    if brightness_range and contrast_range:
-        b = random.uniform(brightness_range[0], brightness_range[1])
-        c = random.uniform(contrast_range[0], contrast_range[1])
-        if invert and bool(random.getrandbits(1)):
-            c = - c
-        return img * c + b
-    elif brightness_range:
-        b = random.uniform(brightness_range[0], brightness_range[1])
-        if invert and bool(random.getrandbits(1)):
-            return -img + b
+
+    b = random.uniform(brightness_range[0], brightness_range[1]) if brightness_range else 0
+    c = random.uniform(contrast_range[0], contrast_range[1]) if contrast_range else 0
+    if invert and bool(random.getrandbits(1)):
+        c = -c
+    return (b,c)
+
+def add_gaussian_noise(img, mean=0, sigma=[0, 0.1]):
+    if is_list(sigma):
+        if len(sigma)==2:
+            sigma = random.uniform(sigma[0], sigma[1])
         else:
-            return img + b
-    elif contrast_range:
-        c = random.uniform(contrast_range[0], contrast_range[1])
-        if invert and bool(random.getrandbits(1)):
-            c = - c
-        return img * c
-    else:
-        return img
+            raise ValueError("Sigma  should be either a list/tuple of lenth 2 or a scalar")
+    gauss = np.random.normal(mean,sigma,img.shape).reshape(img.shape)
+    return img + gauss
 
 def is_list(l):
     return isinstance(l, (list, tuple, np.ndarray))
