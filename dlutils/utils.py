@@ -44,8 +44,7 @@ def freeze_session(session, keep_var_names=None, output_names=None, clear_device
     pruned so subgraphs that are not necessary to compute the requested
     outputs are removed.
     @param session The TensorFlow session to be frozen.
-    @param keep_var_names A list of variable names that should not be frozen,
-                          or None to freeze all the variables in the graph.
+    @param keep_var_names A list of variable names that should not be frozen, or None to freeze all the variables in the graph.
     @param output_names Names of the relevant graph outputs.
     @param clear_devices Remove the device directives from the graph for better portability.
     @return The frozen graph definition.
@@ -63,12 +62,20 @@ def freeze_session(session, keep_var_names=None, output_names=None, clear_device
         return frozen_graph
 
 # caution: export with a version of tensorflow compatible with the version that will run the prediction. e.g export with 1.14 is not compatible with 1.13.1
-def export_model_graph(model, outdir, filename="saved_model.pb", output_names=None):
+def export_model_graph(model, outdir, filename="saved_model.pb", input_names=None, output_names=None):
+    if input_names:
+        if len(input_names)!=len(model.inputs):
+            raise ValueError("Model has {} inputs whereas {} input names are specified".format(len(model.outputs), len(output_names)))
+        for i, input in enumerate(model.inputs):
+            input._name = input_names[i]
+            #tf.identity(input, name=input_names[i])
     if output_names:
         if len(output_names)!=len(model.outputs):
             raise ValueError("Model has {} outputs whereas {} output names are specified".format(len(model.outputs), len(output_names)))
-        for out in model.outputs:
-            tf.identity(out, name=output_names[i])
+        for i, out in enumerate(model.outputs):
+            out._name = output_names[i]
+            #tf.identity(out, name=output_names[i])
+
     frozen_graph = freeze_session(K.get_session(), output_names=[out.op.name for out in model.outputs])
     tf.train.write_graph(frozen_graph, outdir, filename, as_text=False)
 

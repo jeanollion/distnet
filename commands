@@ -1,0 +1,5 @@
+rclone sync ~/Dev/DL_Utils/dlutils/ gDriveDL:DL_Utils/dlutils/ --progress
+
+install kernel for jupyterlab:
+in the env: pip install ipykernel
+/home/jollion/.virtualenvs/tensorflow2/bin/python -m ipykernel install --user --name=tensorflow2
