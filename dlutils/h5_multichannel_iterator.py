@@ -1,15 +1,21 @@
 import numpy as np
 from dlutils import IndexArrayIterator
+from dlutils import pre_processing_utils as pp
 from .utils import get_datasets_paths, get_datasets_by_path, get_parent_path
 from sklearn.model_selection import train_test_split
 import h5py
 from math import ceil
 import time
+import copy
+from math import copysign
+
 class H5MultiChannelIterator(IndexArrayIterator):
 	def __init__(self,
 				h5py_file,
 				channel_keywords=['/raw'],
-				channel_scaling_param=[{'level':1, 'qmin':5, 'qmax':95}],
+				input_channels=[0],
+				output_channels=[0],
+				channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
 				group_keyword=None,
 				image_data_generators=None,
 				batch_size=32,
@@ -23,6 +29,12 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		self.channel_scaling_param = channel_scaling_param
 		self.dtype = dtype
 		self.perform_data_augmentation=perform_data_augmentation
+		if (len(input_channels) != len(set(input_channels))):
+			raise ValueError("Duplicated channels in input_channels")
+		if (len(output_channels) != len(set(output_channels))):
+			raise ValueError("Duplicated channels in output_channels")
+		self.input_channels=input_channels
+		self.output_channels=output_channels
 		if image_data_generators!=None and len(channel_keywords)!=len(image_data_generators):
 			raise ValueError('image_data_generators argument should be either None or an array of same length as channel_keywords')
 		self.image_data_generators=image_data_generators
@@ -110,8 +122,21 @@ class H5MultiChannelIterator(IndexArrayIterator):
 			train iterator has the same parameters as current instance
 			test iterator has the same parameters as current instance except those defined in the argument of this method
 		"""
+		shuffle_test=options.pop('shuffle_test', self.shuffle)
+		perform_data_augmentation_test=options.pop('perform_data_augmentation_test', self.perform_data_augmentation)
+		seed_test=options.pop('seed_test', self.seed)
+		train_idx, test_idx = train_test_split(self.allowed_indexes, **options)
 
-		raise NotImplementedError
+		train_iterator = copy.copy(self)
+		train_iterator.set_allowed_indexes(train_idx)
+
+		test_iterator = copy.copy(self)
+		test_iterator.shuffle=shuffle_test
+		test_iterator.perform_data_augmentation=perform_data_augmentation_test
+		test_iterator.seed=seed_test
+		test_iterator.set_allowed_indexes(test_idx)
+
+		return train_iterator, test_iterator
 
 	def _get_ds_idx(self, index_array):
 		ds_idx = np.searchsorted(self.ds_len, index_array, side='right')
@@ -127,13 +152,13 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		"""
 		ds_idx = self._get_ds_idx(index_array) # modifies index_array
 
-		if len(self.channel_keywords)==1:
+		if self.output_channels is None or len(self.output_channels)==0:
 			return self._get_input_batch(ds_idx, index_array)
-		elif len(self.channel_keywords)==2 and self.channel_keywords[0]==self.channel_keywords[1]:
+		elif self.input_channels==self.output_channels:
 			batch = self._get_input_batch(ds_idx, index_array)
 			return (batch, batch)
 		else:
-			aug_param_array = [None]*len(index_array)
+			aug_param_array = [[None]*len(self.channel_keywords) for i in range(len(index_array))]
 			return (self._get_input_batch(ds_idx, index_array, aug_param_array=aug_param_array), self._get_output_batch(ds_idx, index_array, aug_param_array=aug_param_array))
 
 	def _get_input_batch(self, index_ds, index_array, aug_param_array=None):
@@ -154,7 +179,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		    batch of input images
 
 		"""
-		raise NotImplementedError
+		return [self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, True, aug_param_array, perform_augmentation=True) for chan_idx in self.input_channels]
 
 	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
 		"""Generate a batch of output images
@@ -174,24 +199,22 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		    batch of input images
 
 		"""
-		raise NotImplementedError
+		return [self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, False, aug_param_array, perform_augmentation=True) for chan_idx in self.output_channels]
 
-	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, is_input, aug_param_array=None, perform_augmantation=True):
+	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, is_input, aug_param_array=None, perform_augmentation=True, transfer_aug_param_function=lambda source, dest, ds_idx, im_idx:copy_geom_tranform_parameters(source, dest)):
 		"""Generate a batch of transformed sample for a given channel
 
 		Parameters
 		----------
-		index_ds : type
+		index_ds : int array
 		    dataset index for each image
-		index_array : type
+		index_array : int array
 		    image index within dataset
-		chan_idx : type
+		chan_idx : int
 		    index of the channel
-		is_input : type
-		    wether the channel corresponds to the input channel.
-			If True, aug_param_array will be populated by this method if there is an ImageDataGenerator for this channel
-			If False, affine transformation parameters contained in aug_param_array will be passed to the ImageDataGenerator
-		aug_param_array : type
+		is_input : bool
+			whether this batch will be part of input or output batch
+		aug_param_array : dict array
 		    parameters generated by the ImageDataGenerator of the input channel.
 			Affine transformation parameters are generated for input batch and shared with output batch so that same affine transform are applied to output batch
 
@@ -201,25 +224,37 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		    batch of image for the channel of index chan_idx
 
 		"""
+
 		im_shape = self.shape[chan_idx]
-		image_data_generator = self.image_data_generators[chan_idx] if self.perform_data_augmentation and perform_augmantation and self.image_data_generators!=None else None
+		image_data_generator = self.image_data_generators[chan_idx] if self.perform_data_augmentation and perform_augmentation and self.image_data_generators!=None else None
 		channel = () if len(im_shape)==3 else (1,)
 		batch = np.zeros((len(index_array),) + im_shape + channel, dtype=self.dtype)
 		# build batch of image data
 		for i, (ds_idx, im_idx) in enumerate(zip(index_ds, index_array)):
 			im = self._read_image(chan_idx, ds_idx, im_idx)
 			if image_data_generator!=None:
-				params = image_data_generator.get_random_transform(im.shape)
-				if aug_param_array!=None:
-					if is_input:
-						aug_param_array[i] = params
+				params = self._get_data_augmentation_parameters(chan_idx, im.shape, ds_idx, im_idx)
+				if aug_param_array is not None:
+					if aug_param_array[i][chan_idx] is None:
+						if chan_idx!=0:
+							transfer_aug_param_function(aug_param_array[i][0], params, ds_idx, im_idx) # default reference channel is 0
+						aug_param_array[i][chan_idx] = params
 					else:
-						copy_affine_tranform_parameters(aug_param_array[i], params)
+						transfer_aug_param_function(aug_param_array[i][chan_idx], params, ds_idx, im_idx)
 				im = image_data_generator.apply_transform(im, params)
 				im = image_data_generator.standardize(im)
+			else:
+				if chan_idx == 0: # in case no data augmentation -> set range to [0, 1] # todo add parameter ?
+					im = pp.adjust_histogram_range(im)
+				if aug_param_array is not None and aug_param_array[i][chan_idx] is None: # populate data augmentation array in case it is used for other purposes
+					aug_param_array[i][chan_idx] = dict()
 			batch[i] = im
 		return batch
 
+	def _get_data_augmentation_parameters(self, chan_idx, im_shape, ds_idx, img_idx):
+		if self.image_data_generators is None or self.image_data_generators[chan_idx] is None:
+			return None
+		return self.image_data_generators[chan_idx].get_random_transform(im_shape)
 
 	def _read_image(self, chan_idx, ds_idx, im_idx):
 		ds = self.ds_array[chan_idx][ds_idx]
@@ -317,146 +352,61 @@ class H5MultiChannelIterator(IndexArrayIterator):
 			if ds_path not in output_file:
 				output_file.create_dataset(ds_path, (self.ds_array[0][ds_i].shape[0],)+output_shape, dtype=self.dtype, **create_dataset_options) #, compression="gzip" # no compression for compatibility with java driver
 
+
+
+# this implementation forbids some trasformations when cells touch border
+class H5SegmentationIterator(H5MultiChannelIterator):
+	def __init__(self,
+				h5py_file,
+				channel_keywords=['/raw', '/edm'],
+				input_channels=[0],
+				output_channels=[1],
+				mask_channel=1,
+				channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
+				group_keyword=None,
+				image_data_generators=None,
+				batch_size=32,
+				shuffle=True,
+				perform_data_augmentation=True,
+				seed=None,
+				dtype='float32'):
+		super().__init__(h5py_file, channel_keywords, input_channels, output_channels, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		self.mask_channel = mask_channel
+
+	def _get_data_augmentation_parameters(self, chan_idx, im_shape, ds_idx, img_idx):
+		params = super()._get_data_augmentation_parameters(chan_idx, im_shape, ds_idx, img_idx)
+		if chan_idx==0:
+			self._forbid_transformations_if_object_touching_borders(params, self.mask_channel, ds_idx, img_idx)
+		return params
+
 	def _has_object_at_y_borders(self, mask_channel_idx, ds_idx, im_idx):
 		ds = self.ds_array[mask_channel_idx][ds_idx]
-		off = ds.attrs.get('scaling_center', [0])[0] # supposes there are no other scaling for edm
+		off = ds.attrs.get('scaling_center', [0])[0] # supposes there are no other scaling for mask channel
 		return np.any(ds[im_idx, [-1,0], :] - off, 1) # np.flip()
 
 	def _forbid_transformations_if_object_touching_borders(self, aug_param, mask_channel_idx, ds_idx, img_idx):
 		tx = aug_param.get('tx', 0)
 		zx = aug_param.get('zx', 1)
-		if tx!=0 or zx>1:
+		shear = aug_param.get('shear', 0)
+		theta = aug_param.get('theta', 0)
+		if tx!=0 or zx>1 or theta!=0 or shear!=0:
 			has_object_up, has_object_down = self._has_object_at_y_borders(mask_channel_idx, ds_idx, img_idx) # up & down as in the displayed image
 			if has_object_down and has_object_up or has_object_up and tx<0 or has_object_down and tx>0:
 				aug_param['tx']=0
-			if (has_object_up or has_object_down) and zx>1:
-				aug_param['zx'] = 1
-
-# basic implementations
-class H5Iterator(H5MultiChannelIterator):
-	def __init__(self,
-				h5py_file,
-				channel_keywords=['/raw'],
-				channel_scaling_param=[{'level':1, 'qmin':5, 'qmax':95}],
-				group_keyword=None,
-				image_data_generators=None,
-				batch_size=32,
-				shuffle=True,
-				perform_data_augmentation=True,
-				seed=None,
-				dtype='float32'):
-		super().__init__(h5py_file, channel_keywords, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
-
-	def _get_input_batch(self, index_ds, index_array, aug_param_array=None):
-		return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 0, True,  aug_param_array)
-
-	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
-		return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, len(self.channel_keywords)-1, False, aug_param_array)
-
-	def train_test_split(self, **options):
-		shuffle_test=options.pop('shuffle_test', self.shuffle)
-		perform_data_augmentation_test=options.pop('perform_data_augmentation_test', self.perform_data_augmentation)
-		seed_test=options.pop('seed_test', self.seed)
-		train_idx, test_idx = train_test_split(self.allowed_indexes, **options)
-		train_iterator = H5Iterator(h5py_file=self.h5py_file,
-									channel_keywords=self.channel_keywords,
-									channel_scaling_param=self.channel_scaling_param,
-									group_keyword=self.group_keyword,
-									image_data_generators=self.image_data_generators,
-									batch_size=self.batch_size,
-									shuffle=self.shuffle,
-									perform_data_augmentation=self.perform_data_augmentation,
-									seed=self.seed,
-									dtype=self.dtype)
-		train_iterator.set_allowed_indexes(train_idx)
-		test_iterator = H5Iterator(h5py_file=self.h5py_file,
-								channel_keywords=self.channel_keywords,
-								channel_scaling_param=self.channel_scaling_param,
-								group_keyword=self.group_keyword,
-								image_data_generators=self.image_data_generators,
-								batch_size=self.batch_size,
-								shuffle=shuffle_test,
-								perform_data_augmentation=perform_data_augmentation_test,
-								seed=seed_test,
-								dtype=self.dtype)
-		test_iterator.set_allowed_indexes(test_idx)
-		return train_iterator, test_iterator
-
-class H5SegmentationIterator(H5MultiChannelIterator):
-	def __init__(self,
-				h5py_file,
-				channel_keywords=['/raw', '/edm'],
-				channel_scaling_param=[{'level':1, 'qmin':5, 'qmax':95}],
-				group_keyword=None,
-				image_data_generators=None,
-				batch_size=32,
-				shuffle=True,
-				perform_data_augmentation=True,
-				seed=None,
-				dtype='float32'):
-		super().__init__(h5py_file, channel_keywords, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
-
-	def _get_input_batch(self, index_ds, index_array, aug_param_array=None):
-		batch = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 0, True,  aug_param_array, perform_augmantation=False) # will not populate aug_param_array even if there is an image_data_generator
-		if not self.perform_data_augmentation or self.image_data_generators==None or self.image_data_generators[0]==None: # aug_param_array is used to signal that there is no previous image in order to set displacements to zero
-			if aug_param_array  is not None:
-				for i in range(len(aug_param_array)):
-					aug_param_array[i] = dict()
-		else: # perform data augmentation
-			if aug_param_array is None:
-				raise ValueError("aug_param_array argument should not be none when data augmentation is performed")
-			image_data_generator = self.image_data_generators[0]
-			for i, im in enumerate(batch):
-				aug_param_array[i] = image_data_generator.get_random_transform(im.shape)
-				# check that there are no object @ upper or lower border to avoid generating artefacts with translation along y axis
-				self._forbid_transformations_if_object_touching_borders(aug_param_array[i], 1, index_ds[i], index_array[i])
-				im = image_data_generator.apply_transform(im, aug_param_array[i])
-				batch[i] = image_data_generator.standardize(im)
-		return batch
-	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
-		return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 1, False, aug_param_array)
-
-
-
-
-	def train_test_split(self, **options):
-		shuffle_test=options.pop('shuffle_test', self.shuffle)
-		perform_data_augmentation_test=options.pop('perform_data_augmentation_test', self.perform_data_augmentation)
-		seed_test=options.pop('seed_test', self.seed)
-		train_idx, test_idx = train_test_split(self.allowed_indexes, **options)
-		train_iterator = H5SegmentationIterator(h5py_file=self.h5py_file,
-									channel_keywords=self.channel_keywords,
-									channel_scaling_param=self.channel_scaling_param,
-									group_keyword=self.group_keyword,
-									image_data_generators=self.image_data_generators,
-									batch_size=self.batch_size,
-									shuffle=self.shuffle,
-									perform_data_augmentation=self.perform_data_augmentation,
-									seed=self.seed,
-									dtype=self.dtype)
-		train_iterator.set_allowed_indexes(train_idx)
-		test_iterator = H5SegmentationIterator(h5py_file=self.h5py_file,
-								channel_keywords=self.channel_keywords,
-								channel_scaling_param=self.channel_scaling_param,
-								group_keyword=self.group_keyword,
-								image_data_generators=self.image_data_generators,
-								batch_size=self.batch_size,
-								shuffle=shuffle_test,
-								perform_data_augmentation=perform_data_augmentation_test,
-								seed=seed_test,
-								dtype=self.dtype)
-		test_iterator.set_allowed_indexes(test_idx)
-		return train_iterator, test_iterator
-
-
-
+			if has_object_up or has_object_down:
+				if zx>1:
+					aug_param['zx'] = 1
+				if shear!=0:
+					aug_param['shear'] = 0
+				if theta!=0:
+					aug_param['theta'] = 0
 # class util methods
-def copy_affine_tranform_parameters(aug_param_source, aug_param_dest):
-		aug_param_dest['theta'] = aug_param_source.get('theta', 0)
-		aug_param_dest['tx'] = aug_param_source.get('tx', 0)
-		aug_param_dest['ty'] = aug_param_source.get('ty', 0)
-		aug_param_dest['shear'] = aug_param_source.get('shear', 0)
-		aug_param_dest['zx'] = aug_param_source.get('zx', 1)
-		aug_param_dest['zy'] = aug_param_source.get('zy', 1)
-		aug_param_dest['flip_horizontal'] = aug_param_source.get('flip_horizontal', False)
-		aug_param_dest['flip_vertical'] = aug_param_source.get('flip_vertical', 0)
+def copy_geom_tranform_parameters(aug_param_source, aug_param_dest):
+	aug_param_dest['theta'] = aug_param_source.get('theta', 0)
+	aug_param_dest['tx'] = aug_param_source.get('tx', 0)
+	aug_param_dest['ty'] = aug_param_source.get('ty', 0)
+	aug_param_dest['shear'] = aug_param_source.get('shear', 0)
+	aug_param_dest['zx'] = aug_param_source.get('zx', 1)
+	aug_param_dest['zy'] = aug_param_source.get('zy', 1)
+	aug_param_dest['flip_horizontal'] = aug_param_source.get('flip_horizontal', False)
+	aug_param_dest['flip_vertical'] = aug_param_source.get('flip_vertical', 0)
