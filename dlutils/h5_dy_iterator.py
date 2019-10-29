@@ -8,11 +8,8 @@ class H5dyIterator(H5TrackingIterator):
 		h5py_file,
 		channel_keywords=['/raw', '/regionLabels', '/prevRegionLabels', '/edm'], # channel @1 must be label & @2 previous label
 		input_channels=[0, 3],
-		output_channels=[1],
 		input_channels_prev=[True, True],
 		input_channels_next=[False, False],
-		output_channels_prev=[True],
-		output_channels_next=[False],
 		mask_channel=1,
 		channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
 		group_keyword=None,
@@ -24,13 +21,10 @@ class H5dyIterator(H5TrackingIterator):
 		dtype='float32'):
 		if len(channel_keywords)<3:
 			raise ValueError('keyword should have at least 3 elements: input images, object labels, object previous labels')
-		if output_channels[0]!=1:
-			raise ValueError('first output channel must be labels and will be converted in displacement')
-		super().__init__(h5py_file, channel_keywords, input_channels, output_channels, input_channels_prev, input_channels_next, output_channels_prev, output_channels_next, mask_channel, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
-		if 2 in output_channels and self._include_prev(2, False):
-			raise ValueError('previous frame of channel 2 (previous labels) cannot be returned')
+		super().__init__(h5py_file, channel_keywords, input_channels, [1], input_channels_prev, input_channels_next, [True], [False], mask_channel, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
+		# dy is computed and returned
 		# label and prev label
 		labelIms = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 1, False, aug_param_array, perform_augmentation=True)
 		prevlabelIms = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 2, False, aug_param_array, perform_augmentation=True)
