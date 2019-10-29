@@ -8,7 +8,7 @@ from .h5_multichannel_iterator import copy_geom_tranform_parameters
 class H5TrackingIterator(H5SegmentationIterator):
 	def __init__(self,
 				h5py_file,
-				channel_keywords=['/raw', '/edm', '/dy'],
+				channel_keywords=['/raw', '/regionLabels', '/prevRegionLabels', '/edm'],
 				input_channels=[0, 1],
 				output_channels=[2],
 				input_channels_prev=[True, True],
@@ -157,8 +157,8 @@ class H5TrackingIterator(H5SegmentationIterator):
 
 		key = "no_prev" if prev else "no_next"
 		key_aug = "no_prev_aug" if prev else "no_next_aug"
-		if source.get(key, False): # there is no displacement data so shift must be 0
-			dest['tx']=source.get('tx', 0)
+		if source.get(key, False): # missing data about previous/next so transformation should be the same between prev/next and cur time point
+			copy_geom_tranform_parameters(source, dest)
 		elif source.get(key_aug, False): # displacement image is the current one
 			self._forbid_transformations_if_object_touching_borders(dest, self.mask_channel, ds_idx, im_idx)
 		else:
