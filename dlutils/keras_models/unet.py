@@ -131,6 +131,8 @@ class UnetDecoder():
     def encode_and_decode(self, input, encoder, layers_to_concatenate=None):
         if encoder.n_down!=self.n_up:
             raise ValueError("encoder has {} enconding blocks whereas decoder has {} decoding blocks".format(enconder.n_down, self.n_up))
+        if isinstance(input, list):
+            input = Concatenate(axis=3)(input)
         encoded, residuals = encoder.encode(input, layers_to_concatenate)
         return self.decode(encoded, residuals)
 
@@ -147,18 +149,31 @@ class UnetDecoder():
         n= self.n_filters * 2**(self.n_up - layer_idx - 1)
         return n
 
-def get_unet_model(image_shape, n_down, filters=64, n_output_channels=1, out_activations=["linear"]):
+def get_unet_model(image_shape, n_down, filters=64, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1):
     encoder = UnetEncoder(n_down, filters, image_shape)
     decoder = UnetDecoder(n_down, filters)
-    if not isinstance(out_activations, list):
-        out_activations=[out_activations]
-    if len(out_activations)==1 and n_output_channels>1:
-         out_activations = out_activations*n_output_channels
-    input = Input(shape = image_shape+(1,), name="input")
+    n_output_channels = _ensure_multiplicity(n_outputs, n_output_channels)
+    out_activations = _ensure_multiplicity(n_outputs, out_activations)
+    n_input_channels = _ensure_multiplicity(n_inputs, n_input_channels)
+    if n_inputs>1:
+        input = [Input(shape = image_shape+(n_input_channels[i],), name="input"+str(i)) for i in range(n_inputs)]
+    else:
+        input = Input(shape = image_shape+(n_input_channels[0],), name="input")
     last_decoded = decoder.encode_and_decode(input, encoder)
-    out = [Conv2D(filters=1, kernel_size=(1, 1), activation=out_activations[i])(last_decoded) for i in range(n_output_channels)]
+    if n_outputs>1:
+        out = [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+str(i))(last_decoded) for i in range(n_outputs)]
+    else:
+        out = Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output")(last_decoded)
     return Model(input, out)
-    # todo make several decoders for each output ? as an option ?
+
+def _ensure_multiplicity(n, object):
+     if not isinstance(object, list):
+         object = [object]
+     if len(object)>1 and len(object)!=n:
+         raise ValueError("length should be either 1 either equal to n")
+     if n>1 and len(object)==1:
+         object = object*n
+     return object
 
 def get_edm_displacement_model(filters=64, image_shape = (256, 32), edm_prop=0.5):
     encoder = UnetEncoder(4, filters, image_shape+(2,))

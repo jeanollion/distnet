@@ -33,9 +33,12 @@ class H5dyIterator(H5TrackingIterator):
 		for i in range(labelIms.shape[0]):
 			dyIm[i][...,0] = compute_dy(labelIms[i,...,1], labelIms[i,...,0], prevlabelIms[i,...,0])
 
-		all_channels = [self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, False, aug_param_array, perform_augmentation=True) for chan_idx in self.output_channels[1:]]
-		all_channels.insert(0, dyIm)
-		return all_channels
+		if len(self.output_channels)>1:
+			all_channels = [self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, False, aug_param_array, perform_augmentation=True) for chan_idx in self.output_channels[1:]]
+			all_channels.insert(0, dyIm)
+			return all_channels
+		else:
+			return dyIm
 
 # dy computation utils
 def get_prev_lab(labelIm_of_prevCells, labelIm, label, center):

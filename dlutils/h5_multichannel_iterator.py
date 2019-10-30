@@ -179,7 +179,10 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		    batch of input images
 
 		"""
-		return [self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, True, aug_param_array, perform_augmentation=True) for chan_idx in self.input_channels]
+		if len(self.input_channels)==1:
+			return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, self.input_channels[0], True, aug_param_array, perform_augmentation=True)
+		else:
+			return [self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, True, aug_param_array, perform_augmentation=True) for chan_idx in self.input_channels]
 
 	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
 		"""Generate a batch of output images
@@ -199,7 +202,10 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		    batch of input images
 
 		"""
-		return [self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, False, aug_param_array, perform_augmentation=True) for chan_idx in self.output_channels]
+		if len(self.output_channels)==1:
+			return self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, self.output_channels[0], False, aug_param_array, perform_augmentation=True)
+		else:
+			return [self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, output_channels[0], False, aug_param_array, perform_augmentation=True) for chan_idx in self.output_channels]
 
 	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, is_input, aug_param_array=None, perform_augmentation=True, transfer_aug_param_function=lambda source, dest, ds_idx, im_idx:copy_geom_tranform_parameters(source, dest)):
 		"""Generate a batch of transformed sample for a given channel
