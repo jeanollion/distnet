@@ -73,7 +73,7 @@ def compute_dy(labelIm, labelIm_prev, labelIm_of_prevCells):
 	dyIm = np.copy(labelIm)
 	for label, center, label_prev in zip(labels, centers, labels_of_prev):
 		if label_prev not in labels_prev:
-			dyIm[dyIm == label] = dyIm.shape[0] # not found -> out of the image ? or zero ?
+			dyIm[dyIm == label] = dyIm.shape[0] * 2 # not found -> out of the image ? or zero ?
 		else:
 			i_prev = labels_prev.index(label_prev)
 			dy = center[0] - centers_prev[i_prev][0] # axis 0 is y
