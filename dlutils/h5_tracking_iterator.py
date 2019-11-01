@@ -7,7 +7,7 @@ from .h5_multichannel_iterator import copy_geom_tranform_parameters
 
 class H5TrackingIterator(H5SegmentationIterator):
 	def __init__(self,
-				h5py_file,
+				h5py_file_path,
 				channel_keywords=['/raw', '/regionLabels', '/prevRegionLabels', '/edm'],
 				input_channels=[0, 1],
 				output_channels=[2],
@@ -43,7 +43,7 @@ class H5TrackingIterator(H5SegmentationIterator):
 		self.input_channels_next=input_channels_next
 		self.output_channels_prev=output_channels_prev
 		self.output_channels_next=output_channels_next
-		super().__init__(h5py_file, channel_keywords, input_channels, output_channels, mask_channel, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, mask_channel, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, is_input, aug_param_array=None, perform_augmentation=True):
 		def transfer_aug_param_function(source, dest, ds_idx, im_idx):

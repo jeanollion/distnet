@@ -5,7 +5,7 @@ from scipy.ndimage.measurements import mean
 
 class H5dyIterator(H5TrackingIterator):
 	def __init__(self,
-		h5py_file,
+		h5py_file_path,
 		channel_keywords=['/raw', '/regionLabels', '/prevRegionLabels', '/edm'], # channel @1 must be label & @2 previous label
 		input_channels=[0, 3],
 		input_channels_prev=[True, True],
@@ -21,7 +21,7 @@ class H5dyIterator(H5TrackingIterator):
 		dtype='float32'):
 		if len(channel_keywords)<3:
 			raise ValueError('keyword should have at least 3 elements: input images, object labels, object previous labels')
-		super().__init__(h5py_file, channel_keywords, input_channels, [1], input_channels_prev, input_channels_next, [True], [False], mask_channel, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		super().__init__(h5py_file_path, channel_keywords, input_channels, [1], input_channels_prev, input_channels_next, [True], [False], mask_channel, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
 		# dy is computed and returned

@@ -1,6 +1,7 @@
 import numpy as np
 from dlutils import IndexArrayIterator
 from dlutils import pre_processing_utils as pp
+from dlutils import AtomicFileHandler
 from .utils import get_datasets_paths, get_datasets_by_path, get_parent_path
 from sklearn.model_selection import train_test_split
 import h5py
@@ -11,7 +12,7 @@ from math import copysign
 
 class H5MultiChannelIterator(IndexArrayIterator):
 	def __init__(self,
-				h5py_file,
+				h5py_file_path,
 				channel_keywords=['/raw'],
 				input_channels=[0],
 				output_channels=[0],
@@ -23,7 +24,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 				perform_data_augmentation=True,
 				seed=None,
 				dtype='float32'):
-		self.h5py_file=h5py_file
+		self.h5py_file_path = h5py_file_path
 		self.group_keyword=group_keyword
 		self.channel_keywords=channel_keywords
 		self.channel_scaling_param = channel_scaling_param
@@ -38,13 +39,8 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		if image_data_generators!=None and len(channel_keywords)!=len(image_data_generators):
 			raise ValueError('image_data_generators argument should be either None or an array of same length as channel_keywords')
 		self.image_data_generators=image_data_generators
-
-		# get all dataset paths
-		self.paths = get_datasets_paths(self.h5py_file, channel_keywords[0], self.group_keyword)
-		if (len(self.paths)==0):
-			raise ValueError('No datasets found ending by {} {}'.format(channel_keywords[0], "and containing {}".format(group_keyword) if group_keyword!=None else "" ))
-		# get all matching dataset lists from h5 file
-		self.ds_array = [get_datasets_by_path(self.h5py_file, [self._get_dataset_path(c, ds_idx) for ds_idx in range(len(self.paths))]) for c in range(len(self.channel_keywords))]
+		self.paths=None
+		self._open_h5py_file()
 		# check that all ds have compatible length between input and output
 		indexes = np.array([ds.shape[0] for ds in self.ds_array[0]])
 		if len(channel_keywords)>1:
@@ -68,7 +64,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 				if ds.shape[1:] != self.shape[c]:
 					raise ValueError('Dataset {dsi} with path {dspath} from channel {chan}({chank}) has shape {dsshape} that differs from first dataset with path {ds1path} with shape {ds1shape}'.format(dsi=ds_idx, dspath=self._get_dataset_path(c, ds_idx), chan=c, chank=self.channel_keywords[c], dsshape=ds.shape[1:], ds1path=self._get_dataset_path(c, 0), ds1shape=self.shape[c] ))
 
-		# labels (optional ? )
+		# labels
 		self.labels = get_datasets_by_path(self.h5py_file, [path.replace(self.channel_keywords[0], '/labels') for path in self.paths])
 		for i, ds in enumerate(self.labels):
 			 self.labels[i] = np.char.asarray(ds[()].astype('unicode')) # todo: check if necessary to convert to char array ? unicode is necessary
@@ -97,7 +93,24 @@ class H5MultiChannelIterator(IndexArrayIterator):
 						min, med, max = np.interp([scaling_info.get('qmin', 5), 50, scaling_info.get('qmax', 95)], percentile_x, percentiles)
 						self.channel_scaling[c][ds_idx] = [med, max-min]
 
+		self._close_h5py_file()
 		super().__init__(indexes[-1], batch_size, shuffle, seed)
+
+	def _open_h5py_file(self):
+		self.h5py_file = h5py.File(AtomicFileHandler(self.h5py_file_path), 'r') # this does work with version 1.14 and 2.9 of h5py but not with version 2.8
+		if self.paths is None:
+			# get all dataset paths
+			self.paths = get_datasets_paths(self.h5py_file, self.channel_keywords[0], self.group_keyword)
+			if (len(self.paths)==0):
+				raise ValueError('No datasets found ending by {} {}'.format(self.channel_keywords[0], "and containing {}".format(self.group_keyword) if self.group_keyword!=None else "" ))
+		# get all matching dataset lists from h5 file
+		self.ds_array = [get_datasets_by_path(self.h5py_file, [self._get_dataset_path(c, ds_idx) for ds_idx in range(len(self.paths))]) for c in range(len(self.channel_keywords))]
+
+	def _close_h5py_file(self):
+		if self.h5py_file is not None:
+			self.h5py_file.close()
+			self.h5py_file = None
+			self.ds_array = None
 
 	def train_test_split(self, **options):
 		"""Split this iterator in two distinct iterators
@@ -150,6 +163,9 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		# Returns
 			A batch of transformed samples (tuple of input and output if output_keyword is specified).
 		"""
+		if self.h5py_file is None: # for concurency issues: file is open by each worker
+			self._open_h5py_file()
+
 		ds_idx = self._get_ds_idx(index_array) # modifies index_array
 
 		if self.output_channels is None or len(self.output_channels)==0:
@@ -363,7 +379,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 # this implementation forbids some trasformations when cells touch border
 class H5SegmentationIterator(H5MultiChannelIterator):
 	def __init__(self,
-				h5py_file,
+				h5py_file_path,
 				channel_keywords=['/raw', '/edm'],
 				input_channels=[0],
 				output_channels=[1],
@@ -376,12 +392,12 @@ class H5SegmentationIterator(H5MultiChannelIterator):
 				perform_data_augmentation=True,
 				seed=None,
 				dtype='float32'):
-		super().__init__(h5py_file, channel_keywords, input_channels, output_channels, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 		self.mask_channel = mask_channel
 
 	def _get_data_augmentation_parameters(self, chan_idx, im_shape, ds_idx, img_idx):
 		params = super()._get_data_augmentation_parameters(chan_idx, im_shape, ds_idx, img_idx)
-		if chan_idx==0:
+		if chan_idx==0: # only for first channel, as the transformation will be used by other channels
 			self._forbid_transformations_if_object_touching_borders(params, self.mask_channel, ds_idx, img_idx)
 		return params
 
