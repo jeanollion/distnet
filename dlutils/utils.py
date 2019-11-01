@@ -84,7 +84,7 @@ def export_model_graph(model, outdir, filename="saved_model.pb", input_names=Non
             out._name = output_names[i]
             #tf.identity(out, name=output_names[i])
 
-    frozen_graph = freeze_session(K.get_session(), output_names=[out.op.name for out in model.outputs])
+    frozen_graph = freeze_session(K.get_session(), output_names=output_names)
     tf.train.write_graph(frozen_graph, outdir, filename, as_text=False)
 
 def export_model_bundle(model, outdir):
