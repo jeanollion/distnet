@@ -2,6 +2,7 @@ import h5py
 import keras.backend as K
 import tensorflow as tf
 from keras.callbacks import LearningRateScheduler
+import numpy as np
 
 def h5py_dataset_iterator(g, prefix=''):
     for key in g.keys():
