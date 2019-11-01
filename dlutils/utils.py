@@ -1,6 +1,7 @@
 import h5py
 import keras.backend as K
 import tensorflow as tf
+from keras.callbacks import LearningRateScheduler
 
 def h5py_dataset_iterator(g, prefix=''):
     for key in g.keys():
@@ -33,7 +34,13 @@ def get_earse_small_values_function(thld):
         return im
     return earse_small_values
 
-
+def step_decay_schedule(initial_lr=1e-3, minimal_lr=1e-5, decay_factor=0.50, step_size=50):
+    if minimal_lr>initial_lr:
+        raise ValueError("Minimal LR should be inferior to initial LR")
+    def schedule(epoch):
+        lr = max(initial_lr * (decay_factor ** np.floor(epoch/step_size)), minimal_lr)
+        return lr
+    return LearningRateScheduler(schedule, verbose=1)
 
 def freeze_session(session, keep_var_names=None, output_names=None, clear_devices=True):
     """
