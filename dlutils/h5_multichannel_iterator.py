@@ -409,8 +409,8 @@ class H5SegmentationIterator(H5MultiChannelIterator):
 	def _forbid_transformations_if_object_touching_borders(self, aug_param, mask_channel_idx, ds_idx, img_idx):
 		tx = aug_param.get('tx', 0)
 		zx = aug_param.get('zx', 1)
-		shear = aug_param.get('shear', 0)
-		theta = aug_param.get('theta', 0)
+		shear = 0 #aug_param.get('shear', 0)
+		theta = 0 #aug_param.get('theta', 0)
 		if tx!=0 or zx>1 or theta!=0 or shear!=0:
 			has_object_up, has_object_down = self._has_object_at_y_borders(mask_channel_idx, ds_idx, img_idx) # up & down as in the displayed image
 			if has_object_down and has_object_up or has_object_up and tx<0 or has_object_down and tx>0:
