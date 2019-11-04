@@ -39,24 +39,24 @@ def random_histogram_range(img, min_range=0.1, range=[0,1]):
     min, max = compute_histogram_range(min_range, range)
     return adjust_histogram_range(img, min, max)
 
-def add_gaussian_noise(img, mean=0, sigma=[0, 0.1]):
+def add_gaussian_noise(img, sigma=[0, 0.1]):
     if is_list(sigma):
         if len(sigma)==2:
             sigma = uniform(sigma[0], sigma[1])
         else:
             raise ValueError("Sigma  should be either a list/tuple of lenth 2 or a scalar")
     sigma *= (img.max() - img.min())
-    gauss = np.random.normal(mean,sigma,img.shape).reshape(img.shape)
+    gauss = np.random.normal(0,sigma,img.shape).reshape(img.shape)
     return img + gauss
 
-def add_speckle_noise(img, mean=0, sigma=[0, 0.1]):
+def add_speckle_noise(img, sigma=[0, 0.1]):
     if is_list(sigma):
         if len(sigma)==2:
             sigma = uniform(sigma[0], sigma[1])
         else:
             raise ValueError("Sigma  should be either a list/tuple of lenth 2 or a scalar")
-    gauss = np.random.normal(mean, sigma, img.shape).reshape(img.shape)
-    return img + img * gauss
+    gauss = np.random.normal(1, sigma, img.shape).reshape(img.shape)
+    return img * gauss
 
 def add_poisson_noise(img, noise_intensity=[0, 0.1]):
     if is_list(noise_intensity):
@@ -76,7 +76,7 @@ def noise_function(noise_max_intensity=0.1):
         gauss = not getrandbits(1)
         speckle = not getrandbits(1)
         poisson = not getrandbits(1)
-        ni = noise_max_intensity / float(max(1, sum([gauss, speckle, poisson])))
+        ni = noise_max_intensity / float(2 ** (sum([gauss, speckle, poisson]) - 1))
         funcs = []
         if poisson:
             funcs.append(lambda im : add_poisson_noise(im, noise_intensity=[0, ni]))
