@@ -1,6 +1,7 @@
 import numpy as np
 import warnings
 from time import sleep
+import subprocess
 from keras.callbacks import Callback
 
 
@@ -33,7 +34,7 @@ class PatchedModelCheckpoint(Callback):
         period: Interval (number of epochs) between checkpoints.
     """
 
-    def __init__(self, filepath, monitor='val_loss', verbose=0,
+    def __init__(self, filepath, filepath_dest=None, monitor='val_loss', verbose=0,
                  save_best_only=False, save_weights_only=False,
                  mode='auto', period=1):
         super(PatchedModelCheckpoint, self).__init__()
@@ -44,7 +45,7 @@ class PatchedModelCheckpoint(Callback):
         self.save_weights_only = save_weights_only
         self.period = period
         self.epochs_since_last_save = 0
-
+        self.filepath_dest=filepath_dest
         if mode not in ['auto', 'min', 'max']:
             warnings.warn('ModelCheckpoint mode %s is unknown, '
                           'fallback to auto mode.' % (mode),
@@ -65,12 +66,27 @@ class PatchedModelCheckpoint(Callback):
                 self.monitor_op = np.less
                 self.best = np.Inf
 
+    def _remove_file(self, filepath):
+        try:
+            subprocess.run("rm "+filepath, shell=True)
+        except Exception as error:
+            print("couldn't remove file: ", filepath, "\n", error)
+
+    def _copy_file(self, source, dest):
+        self._remove_file(dest)
+        try:
+            subprocess.run("cp "+source+" "+dest, shell=True)
+        except Exception as error:
+            print("Couldn't copy {} to {}, error:\n{}".format(source, dest, error))
+
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
         self.epochs_since_last_save += 1
         if self.epochs_since_last_save >= self.period:
             self.epochs_since_last_save = 0
             filepath = self.filepath.format(epoch=epoch + 1, **logs)
+            filepath_dest = self.filepath_dest.format(epoch=epoch + 1, **logs) if self.filepath_dest else None
+            self._remove_file(filepath)
             if self.save_best_only:
                 current = logs.get(self.monitor)
                 if current is None:
@@ -92,6 +108,8 @@ class PatchedModelCheckpoint(Callback):
                                     self.model.save_weights(filepath, overwrite=True)
                                 else:
                                     self.model.save(filepath, overwrite=True)
+                                if filepath_dest:
+                                    self._copy_file(filepath, filepath_dest)
                                 saved_correctly = True
                             except Exception as error:
                                 print('Error while trying to save the model: {}.\nTrying again...'.format(error))
@@ -105,11 +123,14 @@ class PatchedModelCheckpoint(Callback):
                     print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
                 saved_correctly = False
                 while not saved_correctly:
+                    self._remove_file(filepath)
                     try:
                         if self.save_weights_only:
                             self.model.save_weights(filepath, overwrite=True)
                         else:
                             self.model.save(filepath, overwrite=True)
+                        if filepath_dest:
+                            self._copy_file(filepath, filepath_dest)
                         saved_correctly = True
                     except Exception as error:
                         print('Error while trying to save the model: {}.\nTrying again...'.format(error))
