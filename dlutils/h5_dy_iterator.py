@@ -2,7 +2,7 @@ from dlutils import H5TrackingIterator
 import numpy as np
 from scipy.ndimage import center_of_mass
 from scipy.ndimage.measurements import mean
-
+from math import copysign
 class H5dyIterator(H5TrackingIterator):
 	def __init__(self,
 		h5py_file_path,
@@ -73,12 +73,13 @@ def compute_dy(labelIm, labelIm_prev, labelIm_of_prevCells):
 	dyIm = np.copy(labelIm)
 	for label, center, label_prev in zip(labels, centers, labels_of_prev):
 		if label_prev not in labels_prev:
-			sign = 1 if center[0] < dyIm.shape[0] / 2 else -1
-			dyIm[dyIm == label] = dyIm.shape[0] * 2 * sign # not found -> out of the image. What value should be set out-of-the-image ? zero ? other channel ?
+			#sign = 1 if center[0] < dyIm.shape[0] / 2 else -1
+			#dyIm[dyIm == label] = dyIm.shape[0] * 2 * sign # not found -> out of the image. What value should be set out-of-the-image ? zero ? other channel ?
+			dyIm[dyIm == label] = 0
 		else:
 			i_prev = labels_prev.index(label_prev)
 			dy = center[0] - centers_prev[i_prev][0] # axis 0 is y
-			if dy==0:
-				dy = 0.1 # not 0
+			if abs(dy)<1:
+				dy = copysign(1, dy) # not 0
 			dyIm[dyIm == label] = dy
 	return dyIm
