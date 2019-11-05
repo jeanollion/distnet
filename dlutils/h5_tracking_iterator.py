@@ -154,16 +154,9 @@ class H5TrackingIterator(H5SegmentationIterator):
 	def _transfer_geom_aug_param_neighbor(self, source, dest, prev, ds_idx, im_idx): # transfer affine parameters that must be identical between curent and prev/next image
 		dest['flip_vertical'] = source.get('flip_vertical', False) # flip must be the same
 		dest['zy'] = source.get('zy', 1) # zoom should be the same so that cell aspect does not change too much
-
-		key = "no_prev" if prev else "no_next"
-		key_aug = "no_prev_aug" if prev else "no_next_aug"
-		if source.get(key, False): # missing data about previous/next so transformation should be the same between prev/next and cur time point
-			copy_geom_tranform_parameters(source, dest)
-		elif source.get(key_aug, False): # displacement image is the current one
-			self._forbid_transformations_if_object_touching_borders(dest, self.mask_channel, ds_idx, im_idx)
-		else:
-			inc = -1 if prev else 1
-			self._forbid_transformations_if_object_touching_borders(dest, self.mask_channel, ds_idx, im_idx+inc)
+		dest['zx'] = source.get('zx', 1) # zoom should be the same so that cell aspect does not change too much
+		dest['shear'] = source.get('shear', 0) # shear should be the same so that cell aspect does not change too much
+		self._forbid_transformations_if_object_touching_borders(dest, self.mask_channel, ds_idx, im_idx) # im_idx are already those of prev/next image
 
 	def _transfer_illumination_aug_param(self, source, dest):
 		# illumination parameters should be the same between current and neighbor images
