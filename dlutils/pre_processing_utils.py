@@ -2,6 +2,9 @@ import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 import random
 from random import uniform, random, randint, getrandbits
+from scipy import interpolate
+import copy
+
 
 def sometimes(func, prob=0.5):
     return lambda im:func(im) if random()<prob else im
@@ -98,59 +101,24 @@ def grayscale_deformation_function(add_noise=True, adjust_histogram_range=True):
 def is_list(l):
     return isinstance(l, (list, tuple, np.ndarray))
 
-
-
-
-
-# import skimage.transform as trans
-# def zoomshift(I,zoomlevel,shiftX,shiftY, order=0): # todo: test
-#     '''
-#     This function applies a zooming/scaling operation on the image, shifts it,
-#     and then crops it back to its original size
-#     From delta software: https://gitlab.com/dunloplab/delta/blob/master/data.py
-#     '''
-#
-#     oldshape = I.shape
-#     I = trans.rescale(I,zoomlevel,mode='edge',multichannel=False, order=order)
-#     shiftX = shiftX * I.shape[0]
-#     shiftY = shiftY * I.shape[1]
-#     I = shift(I,(shiftY, shiftX),order=order) # For some reason it looks like X & Y are inverted?
-#     i0 = (round(I.shape[0]/2 - oldshape[0]/2), round(I.shape[1]/2 - oldshape[1]/2))
-#     I = I[i0[0]:(i0[0]+oldshape[0]), i0[1]:(i0[1]+oldshape[1])]
-#     return I
-#
-# def shift(image, vector, order=0): # todo: test
-#     '''
-#     This function performs the shifting operation used in zoomshift() above
-#     From delta software: https://gitlab.com/dunloplab/delta/blob/master/data.py
-#     '''
-#     transform = trans.AffineTransform(translation=vector)
-#     shifted = trans.warp(image, transform, mode='edge',order=order)
-#
-#     return shifted
-
-from scipy import interpolate
-import copy
-
-def histogram_voodoo(image,num_control_points=50):
+def histogram_voodoo(image,num_control_points=5, intensity=0.5):
     '''
     Adapted from delta software: https://gitlab.com/dunloplab/delta/blob/master/data.py
     It performs an elastic deformation on the image histogram to simulate
     changes in illumination
     '''
+    if intensity<=0 or intensity>=1:
+        raise ValueError("Intensity should be in range ]0, 1[")
+
     min = image.min()
     max = image.max()
-    range = max - min
-    delta = range/float(num_control_points+2)
-    control_points = np.linspace(min,max,num=num_control_points+2)
-    sorted_points = copy.copy(control_points)
-    random_points = np.random.uniform(low=min + delta, high=max - delta,size=num_control_points)
-    sorted_points[1:-1] = np.sort(random_points)
-    mapping = interpolate.PchipInterpolator(control_points, sorted_points)
-
+    delta = intensity * (max - min) / float(num_control_points + 1)
+    control_points = np.linspace(min, max, num=num_control_points + 2)
+    target_points = copy.copy(control_points)
+    for i in range(1, num_control_points + 1):
+        target_points[i] = np.random.uniform(low=control_points[i] - delta, high=control_points[i] + delta)
+    mapping = interpolate.PchipInterpolator(control_points, target_points)
     newimage = mapping(image)
-    # Rescale values to original range:
-    #newimage = np.interp(newimage, (newimage.min(), newimage.max()), (image.min(), image.max()))
     return newimage
 
 def illumination_voodoo(image,num_control_points=5, intensity=0.6):
