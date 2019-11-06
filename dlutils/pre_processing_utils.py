@@ -58,8 +58,9 @@ def add_speckle_noise(img, sigma=[0, 0.1]):
             sigma = uniform(sigma[0], sigma[1])
         else:
             raise ValueError("Sigma  should be either a list/tuple of lenth 2 or a scalar")
+    min = img.min()
     gauss = np.random.normal(1, sigma, img.shape).reshape(img.shape)
-    return img * gauss
+    return (img - min) * gauss + min
 
 def add_poisson_noise(img, noise_intensity=[0, 0.1]):
     if is_list(noise_intensity):
@@ -74,19 +75,19 @@ def add_poisson_noise(img, noise_intensity=[0, 0.1]):
     output = np.random.poisson(img / noise_intensity) * noise_intensity
     return output * (max - min) + min
 
-def noise_function(noise_max_intensity=0.1):
+def noise_function(noise_max_intensity=0.15):
     def res(img):
         gauss = not getrandbits(1)
         speckle = not getrandbits(1)
         poisson = not getrandbits(1)
-        ni = noise_max_intensity / float(2 ** (sum([gauss, speckle, poisson]) - 1))
+        ni = noise_max_intensity / float(1.5 ** (sum([gauss, speckle, poisson]) - 1))
         funcs = []
         if poisson:
             funcs.append(lambda im : add_poisson_noise(im, noise_intensity=[0, ni]))
         if speckle:
             funcs.append(lambda im:add_speckle_noise(im, sigma=[0, ni]))
         if gauss:
-            funcs.append(lambda im:add_gaussian_noise(im, sigma=[0, ni]))
+            funcs.append(lambda im:add_gaussian_noise(im, sigma=[0, ni * 0.7]))
         return apply_successively(*funcs)(img)
     return res
 
