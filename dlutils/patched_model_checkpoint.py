@@ -86,7 +86,6 @@ class PatchedModelCheckpoint(Callback):
             self.epochs_since_last_save = 0
             filepath = self.filepath.format(epoch=epoch + 1, **logs)
             filepath_dest = self.filepath_dest.format(epoch=epoch + 1, **logs) if self.filepath_dest else None
-            self._remove_file(filepath)
             if self.save_best_only:
                 current = logs.get(self.monitor)
                 if current is None:
@@ -100,7 +99,7 @@ class PatchedModelCheckpoint(Callback):
                                   % (epoch + 1, self.monitor, self.best,
                                      current, filepath))
                         self.best = current
-
+                        self._remove_file(filepath)
                         saved_correctly = False
                         while not saved_correctly:
                             try:
@@ -121,9 +120,9 @@ class PatchedModelCheckpoint(Callback):
             else:
                 if self.verbose > 0:
                     print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
+                self._remove_file(filepath)
                 saved_correctly = False
                 while not saved_correctly:
-                    self._remove_file(filepath)
                     try:
                         if self.save_weights_only:
                             self.model.save_weights(filepath, overwrite=True)
