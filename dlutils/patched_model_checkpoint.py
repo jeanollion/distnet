@@ -34,7 +34,7 @@ class PatchedModelCheckpoint(Callback):
         period: Interval (number of epochs) between checkpoints.
     """
 
-    def __init__(self, filepath, filepath_dest=None, monitor='val_loss', verbose=0,
+    def __init__(self, filepath, filepath_dest=None, timeout_function=None, monitor='val_loss', verbose=0,
                  save_best_only=False, save_weights_only=False,
                  mode='auto', period=1):
         super(PatchedModelCheckpoint, self).__init__()
@@ -46,12 +46,11 @@ class PatchedModelCheckpoint(Callback):
         self.period = period
         self.epochs_since_last_save = 0
         self.filepath_dest=filepath_dest
-        if mode not in ['auto', 'min', 'max']:
-            warnings.warn('ModelCheckpoint mode %s is unknown, '
-                          'fallback to auto mode.' % (mode),
-                          RuntimeWarning)
-            mode = 'auto'
+        self.timeout_function=timeout_function
 
+        if mode not in ['auto', 'min', 'max']:
+            warnings.warn('ModelCheckpoint mode %s is unknown, fallback to auto mode.' % (mode), RuntimeWarning)
+            mode = 'auto'
         if mode == 'min':
             self.monitor_op = np.less
             self.best = np.Inf
@@ -67,17 +66,39 @@ class PatchedModelCheckpoint(Callback):
                 self.best = np.Inf
 
     def _remove_file(self, filepath):
-        try:
-            subprocess.run("rm "+filepath, shell=True)
-        except Exception as error:
-            print("couldn't remove file: ", filepath, "\n", error)
+        removed = False
+        while not removed:
+            try:
+                print("removing", filepath, "...")
+                subprocess.run("rm "+filepath, shell=True, timeout=20)
+                removed = True
+                print(filepath, "removed")
+            except TimeoutExpired as to:
+                if self.timeout_function:
+                    print("running timeout function...")
+                    self.timeout_function()
+                    print("waiting 5 seconds before re-try")
+                    sleep(5)
+            except Exception as error:
+                print("couldn't remove file: ", filepath, "\n", error)
 
     def _copy_file(self, source, dest):
         self._remove_file(dest)
-        try:
-            subprocess.run("cp "+source+" "+dest, shell=True)
-        except Exception as error:
-            print("Couldn't copy {} to {}, error:\n{}".format(source, dest, error))
+        copied = False
+        while not copied:
+            try:
+                print("copying", source, "to", dest, "...")
+                subprocess.run("cp "+source+" "+dest, shell=True, timeout=20)
+                copied=True
+                print(source, "copied to", dest)
+            except TimeoutExpired as to:
+                if self.timeout_function:
+                    print("running timeout function...")
+                    self.timeout_function()
+                    print("waiting 5 seconds before re-try...")
+                    sleep(5)
+            except Exception as error:
+                print("Couldn't copy {} to {}, error:\n{}".format(source, dest, error))
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
@@ -89,8 +110,7 @@ class PatchedModelCheckpoint(Callback):
             if self.save_best_only:
                 current = logs.get(self.monitor)
                 if current is None:
-                    warnings.warn('Can save best model only with %s available, '
-                                  'skipping.' % (self.monitor), RuntimeWarning)
+                    warnings.warn('Can save best model only with %s available, skipping.' % (self.monitor), RuntimeWarning)
                 else:
                     if self.monitor_op(current, self.best):
                         if self.verbose > 0:
@@ -99,7 +119,7 @@ class PatchedModelCheckpoint(Callback):
                                   % (epoch + 1, self.monitor, self.best,
                                      current, filepath))
                         self.best = current
-                        self._remove_file(filepath)
+                        #self._remove_file(filepath)
                         saved_correctly = False
                         while not saved_correctly:
                             try:
@@ -120,7 +140,7 @@ class PatchedModelCheckpoint(Callback):
             else:
                 if self.verbose > 0:
                     print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
-                self._remove_file(filepath)
+                #self._remove_file(filepath)
                 saved_correctly = False
                 while not saved_correctly:
                     try:
