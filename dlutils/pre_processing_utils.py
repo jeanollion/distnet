@@ -28,8 +28,10 @@ def random_gaussian_blur(img, sig_min=1, sig_max=2):
     sig = uniform(sig_min, sig_max)
     return gaussian_blur(img, sig)
 
-def adjust_histogram_range(img, min=0, max=1):
-    return np.interp(img, (img.min(), img.max()), (min, max))
+def adjust_histogram_range(img, min=0, max=1, initial_range=None):
+    if initial_range is None:
+        initial_range=[img.min(), img.max()]
+    return np.interp(img, initial_range, (min, max))
 
 def compute_histogram_range(min_range, range=[0, 1]):
     if range[1]-range[0]<min_range:
@@ -91,6 +93,18 @@ def noise_function(noise_max_intensity=0.15):
         return apply_successively(*funcs)(img)
     return res
 
+def get_random_noise_parameters(noise_max_intensity=0.15):
+    gauss = not getrandbits(1)
+    speckle = not getrandbits(1)
+    poisson = not getrandbits(1)
+    ni = noise_max_intensity / float(1.5 ** (sum([gauss, speckle, poisson]) - 1))
+
+    gauss_i = uniform(0, noise_max_intensity * 0.7) if gauss else 0
+    speckle_i = uniform(0, noise_max_intensity) if speckle else 0
+    poisson_i = uniform(0, noise_max_intensity) if poisson else 0
+
+    return poisson_i, speckle_i, gauss_i
+
 def grayscale_deformation_function(add_noise=True, adjust_histogram_range=True):
     funcs = [sometimes(random_gaussian_blur), sometimes(histogram_voodoo), sometimes(illumination_voodoo)]
     if add_noise:
@@ -102,42 +116,69 @@ def grayscale_deformation_function(add_noise=True, adjust_histogram_range=True):
 def is_list(l):
     return isinstance(l, (list, tuple, np.ndarray))
 
-def histogram_voodoo(image,num_control_points=5, intensity=0.5):
+def histogram_voodoo(image, num_control_points=5, intensity=0.5, target_points = None):
     '''
     Adapted from delta software: https://gitlab.com/dunloplab/delta/blob/master/data.py
     It performs an elastic deformation on the image histogram to simulate
     changes in illumination
     '''
-    if intensity<=0 or intensity>=1:
+
+    if target_points is not None and len(target_points)!=num_control_points+2:
+        raise ValueError("invalid target_point number")
+    if target_points is None and intensity<=0 or intensity>=1:
         raise ValueError("Intensity should be in range ]0, 1[")
 
     min = image.min()
     max = image.max()
-    delta = intensity * (max - min) / float(num_control_points + 1)
     control_points = np.linspace(min, max, num=num_control_points + 2)
-    target_points = copy.copy(control_points)
-    for i in range(1, num_control_points + 1):
-        target_points[i] = np.random.uniform(low=control_points[i] - delta, high=control_points[i] + delta)
+    if target_points is None:
+        target_points = get_histogram_voodoo_target_points(control_points, intensity)
+    elif target_points[0] != min or target_points[-1] != max:
+        print("target points borders differs: [{};{}] tp: {}".format(min, max, target_points))
+        target_points[0] = min
+        target_points[-1] = max
     mapping = interpolate.PchipInterpolator(control_points, target_points)
     newimage = mapping(image)
     return newimage
 
-def illumination_voodoo(image,num_control_points=5, intensity=0.6):
+def get_histogram_voodoo_target_points(control_points, intensity):
+    if intensity<=0 or intensity>=1:
+        raise ValueError("Intensity should be in range ]0, 1[")
+    min = control_points[0]
+    max = control_points[-1]
+    num_control_points = len(control_points) - 2
+    delta = intensity * (max - min) / float(num_control_points + 1)
+    target_points = copy.copy(control_points)
+    for i in range(1, len(control_points) - 1):
+        target_points[i] = np.random.uniform(low=control_points[i] - delta, high=control_points[i] + delta)
+    return control_points
+
+def illumination_voodoo(image, num_control_points=5, intensity=0.8, target_points = None):
     '''
     Adapted from delta software: https://gitlab.com/dunloplab/delta/blob/master/data.py
     It simulates a variation in illumination along the length of the chamber
     '''
     if intensity>=1 or intensity<=0:
         raise ValueError("Intensity should be in range ]0, 1[")
+    if target_points is not None and len(target_points)!=num_control_points:
+        raise ValueError("invalid target_point number")
     # Create a random curve along the length of the chamber:
-    control_points = np.linspace(0,image.shape[0]-1,num=num_control_points)
-    random_points = np.random.uniform(low=(1 - intensity) / 2.0, high=(1 + intensity) / 2.0, size=num_control_points)
-    mapping = interpolate.PchipInterpolator(control_points, random_points)
+    control_points = np.linspace(0, image.shape[0]-1, num=num_control_points)
+    if target_points is None:
+        target_points = get_illumination_voodoo_target_points(num_control_points, intensity)
+    mapping = interpolate.PchipInterpolator(control_points, target_points)
     curve = mapping(np.linspace(0,image.shape[0]-1,image.shape[0]))
-    curveIm = np.reshape( np.tile( np.reshape(curve,curve.shape + (1,)), (1, image.shape[1])) ,image.shape )
+    curveIm = np.reshape( np.tile( np.reshape(curve, curve.shape + (1,)), (1, image.shape[1])) ,image.shape )
     # Apply this curve to the image intensity along the length of the chamebr:
-    newimage = np.multiply(image, curveIm)
+    min = image.min()
+    max = image.max()
+    newimage = np.multiply(image-min, curveIm)
     # Rescale values to original range:
-    newimage = np.interp(newimage, (newimage.min(), newimage.max()), (image.min(), image.max()))
+    newimage = np.interp(newimage, (newimage.min(), newimage.max()), (min, max))
 
     return newimage
+
+def get_illumination_voodoo_target_points(num_control_points, intensity):
+    if intensity>=1 or intensity<=0:
+        raise ValueError("Intensity should be in range ]0, 1[")
+    return np.random.uniform(low=(1 - intensity) / 2.0, high=(1 + intensity) / 2.0, size=num_control_points)

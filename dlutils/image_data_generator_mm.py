@@ -1,9 +1,12 @@
 from keras_preprocessing.image import ImageDataGenerator
 import numpy as np
 from math import tan, atan, pi, copysign
+import dlutils.pre_processing_utils as pp
+from random import getrandbits, uniform
+import copy
 
 class ImageDataGeneratorMM(ImageDataGenerator):
-    def __init__(self, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., **kwargs):
+    def __init__(self, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.15, min_histogram_range=0.1, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.8, **kwargs):
         if width_zoom_range!=0. or height_zoom_range!=0.:
             kwargs["zoom_range"] = 0.
             if np.isscalar(width_zoom_range):
@@ -29,6 +32,17 @@ class ImageDataGeneratorMM(ImageDataGenerator):
             raise ValueError("min_zoom_aspectratio must be inferior to max_zoom_aspectratio")
         self.max_zoom_aspectratio=max_zoom_aspectratio
         self.min_zoom_aspectratio=min_zoom_aspectratio
+        self.min_histogram_range=min_histogram_range
+        self.noise_intensity=noise_intensity
+        if np.isscalar(gaussian_blur_range):
+            self.gaussian_blur_range=[gaussian_blur_range, gaussian_blur_range]
+        else:
+            self.gaussian_blur_range=gaussian_blur_range
+        self.histogram_voodoo_n_points=histogram_voodoo_n_points
+        self.histogram_voodoo_intensity=histogram_voodoo_intensity
+        self.illumination_voodoo_n_points=illumination_voodoo_n_points
+        self.illumination_voodoo_intensity=illumination_voodoo_intensity
+        self.perform_illumination_augmentation = perform_illumination_augmentation
         super().__init__(**kwargs)
 
     def get_random_transform(self, img_shape, seed=None):
@@ -97,7 +111,59 @@ class ImageDataGeneratorMM(ImageDataGenerator):
             params['ty'] = new_ty
             params['theta'] = new_theta
             #print("limit translation & rotation: ty: {}, dy: {} ty+dy {}, delta: {}, ty: {}->{}, theta: {}->{}, ".format(ty, dy, abs(ty)+dy, delta, ty, new_ty, theta, new_theta))
+
+        # illumination parameters
+        if self.perform_illumination_augmentation:
+            if self.min_histogram_range<1:
+                vmin, vmax = pp.compute_histogram_range(self.min_histogram_range)
+                params["vmin"] = vmin
+                params["vmax"] = vmax
+            else:
+                params["vmin"] = 0
+                params["vmax"] = 1
+            if self.noise_intensity>0:
+                poisson, speckle, gaussian = pp.get_random_noise_parameters(self.noise_intensity)
+                params["poisson_noise"] = poisson
+                params["speckle_noise"] = speckle
+                params["gaussian_noise"] = gaussian
+            if self.gaussian_blur_range[1]>0 and not getrandbits(1):
+                params["gaussian_blur"] = uniform(self.gaussian_blur_range[0], self.gaussian_blur_range[1])
+
+            if self.histogram_voodoo_n_points>0 and self.histogram_voodoo_intensity>0 and not getrandbits(1):
+                # draw control points
+                min = params["vmin"]
+                max = params["vmax"]
+                control_points = np.linspace(min, max, num=self.histogram_voodoo_n_points + 2)
+                target_points = pp.get_histogram_voodoo_target_points(control_points, self.histogram_voodoo_intensity)
+                params["histogram_voodoo_target_points"] = target_points
+            if self.illumination_voodoo_n_points>0 and self.illumination_voodoo_intensity>0 and not getrandbits(1):
+                params["illumination_voodoo_target_points"] = pp.get_illumination_voodoo_target_points(self.illumination_voodoo_n_points, self.illumination_voodoo_intensity)
         return params
+
+    def apply_transform(self, img, params):
+        img = super().apply_transform(img, params)
+        #print("parameters:", params)
+        if "vmin" in params and "vmax" in params:
+            min = img.min()
+            max = img.max()
+            if min==max:
+                raise ValueError("Image is blank, cannot perform illumination augmentation")
+            img = pp.adjust_histogram_range(img, min=params["vmin"], max = params["vmax"], initial_range=[min, max])
+        if "histogram_voodoo_target_points" in params:
+            target_points = params["histogram_voodoo_target_points"]
+            img = pp.histogram_voodoo(img, len(target_points) - 2, target_points = target_points)
+        if "illumination_voodoo_target_points" in params:
+            target_points = params["illumination_voodoo_target_points"]
+            img = pp.illumination_voodoo(img, len(target_points), target_points=target_points)
+        if params.get("gaussian_blur", 0)>0:
+            img = pp.gaussian_blur(img, params["gaussian_blur"])
+        if params.get("poisson_noise", 0)>0:
+            img = pp.add_poisson_noise(img, params["poisson_noise"])
+        if params.get("speckle_noise", 0)>0:
+            img = pp.add_speckle_noise(img, params["speckle_noise"])
+        if params.get("gaussian_noise", 0)>0:
+            img = pp.add_speckle_noise(img, params["gaussian_noise"])
+        return img
 
     def _get_corrected_zoom_aspectratio(self, zx, zy, zoom_aspectratio, zx_range, zy_range):
         zx, zy = self._get_corrected_zoom_aspectratio1(zx, zy, zoom_aspectratio)
@@ -145,3 +211,37 @@ class ImageDataGeneratorMM(ImageDataGenerator):
                 delta = (zoom_aspectratio * zy - zx) / (- zoom_aspectratio + 1)
                 return zx+delta, zy+delta
         return delta
+
+def transfer_illumination_aug_parameters(source, dest):
+    if "vmin" in source and "vmax" in source:
+        dest["vmin"] = source["vmin"]
+        dest["vmax"] = source["vmax"]
+    else:
+        if "vmin" in dest:
+            del dest["vmin"]
+        if "vmax" in dest:
+            del des["vmax"]
+    if "poisson_noise" in source:
+        dest["poisson_noise"] = source.get("poisson_noise", 0)
+    elif "poisson_noise" in dest:
+        del dest["poisson_noise"]
+    if "speckle_noise" in source:
+        dest["speckle_noise"] = source.get("speckle_noise", 0)
+    elif "speckle_noise" in dest:
+        del dest["speckle_noise"]
+    if "gaussian_noise" in source:
+        dest["gaussian_noise"] = source.get("gaussian_noise", 0)
+    elif "gaussian_noise" in dest:
+        del dest["gaussian_noise"]
+    if "gaussian_blur" in source:
+        dest["gaussian_blur"] = source.get("gaussian_blur", 0)
+    elif "gaussian_blur" in dest:
+        del dest["gaussian_blur"]
+    if "histogram_voodoo_target_points" in source:
+        dest["histogram_voodoo_target_points"] = copy.copy(source["histogram_voodoo_target_points"])
+    elif "histogram_voodoo_target_points" in dest:
+        del dest["histogram_voodoo_target_points"]
+    if "illumination_voodoo_target_points" in source:
+        dest["illumination_voodoo_target_points"] = copy.copy(source["illumination_voodoo_target_points"])
+    elif "illumination_voodoo_target_points" in dest:
+        del dest["illumination_voodoo_target_points"]

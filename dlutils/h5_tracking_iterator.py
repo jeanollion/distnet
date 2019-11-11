@@ -4,6 +4,7 @@ from .utils import get_datasets_by_path
 from random import random
 from sklearn.model_selection import train_test_split
 from .h5_multichannel_iterator import copy_geom_tranform_parameters
+from dlutils.image_data_generator_mm import transfer_illumination_aug_parameters
 
 class H5TrackingIterator(H5SegmentationIterator):
 	def __init__(self,
@@ -75,7 +76,6 @@ class H5TrackingIterator(H5SegmentationIterator):
 				self._set_has_neigh_parameters(index_ds, index_array, aug_param_array, True, perform_augmentation)
 			if self._include_next(0, True):
 				self._set_has_neigh_parameters(index_ds, index_array, aug_param_array, False, perform_augmentation)
-
 		def transfer_aug_param_function(source, dest, ds_idx, im_idx):
 			if len(source) <= 2 and ("no_prev" in source or "no_next" in source or "no_prev_aug" in source or "no_next_aug" in source): # special case: channel 0 input, augmentation parameter was initiated to signal no prev / no next: parameters are actually contained in dest
 				for k in source.keys(): # copy prev / next signaling needed to limit augmentation parameters
@@ -92,7 +92,6 @@ class H5TrackingIterator(H5SegmentationIterator):
 				# also copy all element from dest to source, because only source will remain in aug_param_array
 				for k in dest.keys():
 					source[k] = dest[k]
-
 			else:
 				copy_geom_tranform_parameters(source, dest)
 				if "aug_params_prev" in source:
@@ -191,14 +190,7 @@ class H5TrackingIterator(H5SegmentationIterator):
 
 	def _transfer_illumination_aug_param(self, source, dest):
 		# illumination parameters should be the same between current and neighbor images
-		if 'vmin' in source:
-			dest['vmin'] = source['vmin']
-		elif 'vmin' in dest:
-			del dest['vmin']
-		if 'vmax' in source:
-			dest['vmax'] = source['vmax']
-		elif 'vmax' in dest:
-			del dest['vmax']
+		transfer_illumination_aug_parameters(source, dest)
 		if 'brightness' in source:
 			dest['brightness'] = source['brightness']
 		elif 'brightness' in dest:
