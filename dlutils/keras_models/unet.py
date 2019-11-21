@@ -149,28 +149,35 @@ class UnetDecoder():
         n= self.n_filters * 2**(self.n_up - layer_idx - 1)
         return n
 
-def get_unet_model(image_shape, n_down, filters=64, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1):
-    encoder = UnetEncoder(n_down, filters, image_shape)
-    decoder = UnetDecoder(n_down, filters)
+def get_unet_model(image_shape, n_down, filters=64, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1, n_hourglass=1):
     n_output_channels = _ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = _ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = _ensure_multiplicity(n_inputs, n_input_channels)
+
+    encoders = [UnetEncoder(n_down, filters, image_shape, name="encoder"+str(i)+"_") for i in range(0, n_hourglass)]
+    decoders = [UnetDecoder(n_down, filters, name="decoder"+str(i)+"_") for i in range(0, n_hourglass)]
+
     if n_inputs>1:
         input = [Input(shape = image_shape+(n_input_channels[i],), name="input"+str(i)) for i in range(n_inputs)]
     else:
         input = Input(shape = image_shape+(n_input_channels[0],), name="input")
-    last_decoded = decoder.encode_and_decode(input, encoder)
+
+    last_decoded = decoders[0].encode_and_decode(input, encoders[0])
+    for i in range(1, n_hourglass):
+        last_decoded = decoders[i].encode_and_decode(last_decoded, encoders[i])
+
     if n_outputs>1:
-        out = [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+str(i))(last_decoded) for i in range(n_outputs)]
+        output = [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+str(i))(last_decoded) for i in range(n_outputs)]
     else:
-        out = Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output")(last_decoded)
-    return Model(input, out)
+        output = Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output")(last_decoded)
+
+    return Model(input, output)
 
 def _ensure_multiplicity(n, object):
      if not isinstance(object, list):
          object = [object]
      if len(object)>1 and len(object)!=n:
-         raise ValueError("length should be either 1 either equal to n")
+         raise ValueError("length should be either 1 either equal to n"+str(n))
      if n>1 and len(object)==1:
          object = object*n
      return object

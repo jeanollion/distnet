@@ -69,10 +69,10 @@ class PatchedModelCheckpoint(Callback):
         removed = False
         while not removed:
             try:
-                print("removing", filepath, "...")
+                #print("removing", filepath, "...")
                 subprocess.run("rm "+filepath, shell=True, timeout=20)
                 removed = True
-                print(filepath, "removed")
+                #print(filepath, "removed")
             except TimeoutExpired as to:
                 if self.timeout_function:
                     print("running timeout function...")
@@ -87,7 +87,7 @@ class PatchedModelCheckpoint(Callback):
         copied = False
         while not copied:
             try:
-                print("copying", source, "to", dest, "...")
+                #print("copying", source, "to", dest, "...")
                 subprocess.run("cp "+source+" "+dest, shell=True, timeout=20)
                 copied=True
                 print(source, "copied to", dest)
@@ -106,6 +106,7 @@ class PatchedModelCheckpoint(Callback):
         if self.epochs_since_last_save >= self.period:
             self.epochs_since_last_save = 0
             filepath = self.filepath.format(epoch=epoch + 1, **logs)
+            filepath_prev = self.filepath.format(epoch=epoch, **logs) if epoch > 0 else None
             filepath_dest = self.filepath_dest.format(epoch=epoch + 1, **logs) if self.filepath_dest else None
             if self.save_best_only:
                 current = logs.get(self.monitor)
@@ -129,6 +130,8 @@ class PatchedModelCheckpoint(Callback):
                                     self.model.save(filepath, overwrite=True)
                                 if filepath_dest:
                                     self._copy_file(filepath, filepath_dest)
+                                if filepath_prev and filepath_prev!=filepath:
+                                    self._remove_file(filepath_prev)
                                 saved_correctly = True
                             except Exception as error:
                                 print('Error while trying to save the model: {}.\nTrying again...'.format(error))
@@ -145,11 +148,16 @@ class PatchedModelCheckpoint(Callback):
                 while not saved_correctly:
                     try:
                         if self.save_weights_only:
-                            self.model.save_weights(filepath, overwrite=True)
+                            self.model.save_weights(filepath+str(epoch), overwrite=True)
                         else:
-                            self.model.save(filepath, overwrite=True)
+                            self.model.save(filepath+str(epoch), overwrite=True)
                         if filepath_dest:
-                            self._copy_file(filepath, filepath_dest)
+                            self._copy_file(filepath+str(epoch), filepath_dest)
+                        self._remove_file(filepath)
+                        if epoch>0:
+                            self._remove_file(filepath+str(epoch-1))
+                        if not filepath_dest:
+                            self._copy_file(filepath+str(epoch), filepath)
                         saved_correctly = True
                     except Exception as error:
                         print('Error while trying to save the model: {}.\nTrying again...'.format(error))

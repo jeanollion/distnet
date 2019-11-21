@@ -8,3 +8,4 @@ from .h5_tracking_iterator import H5TrackingIterator
 from .h5_dy_iterator import H5dyIterator
 from .image_data_generator_mm import ImageDataGeneratorMM
 from .patched_model_checkpoint import PatchedModelCheckpoint
+from .CLR import CyclicLR
