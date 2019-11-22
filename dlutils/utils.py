@@ -83,7 +83,8 @@ def export_model_graph(model, outdir, filename="saved_model.pb", input_names=Non
         for i, out in enumerate(model.outputs):
             out._name = output_names[i]
             #tf.identity(out, name=output_names[i])
-
+    for iname in model.inputs:
+        print("input", iname._name)
     frozen_graph = freeze_session(K.get_session(), output_names=output_names)
     tf.train.write_graph(frozen_graph, outdir, filename, as_text=False)
 
