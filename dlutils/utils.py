@@ -4,6 +4,11 @@ import tensorflow as tf
 from keras.callbacks import LearningRateScheduler
 import numpy as np
 
+def remove_duplicates(seq):
+    seen = set()
+    seen_add = seen.add
+    return [x for x in seq if not (x in seen or seen_add(x))]
+
 def h5py_dataset_iterator(g, prefix=''):
     for key in g.keys():
         item = g[key]
