@@ -1,22 +1,20 @@
 import numpy as np
-from dlutils import H5SegmentationIterator
+from dlutils import H5MultiChannelIterator
 from .utils import get_datasets_by_path
 from random import random
 from sklearn.model_selection import train_test_split
 from .h5_multichannel_iterator import copy_geom_tranform_parameters
 from dlutils.image_data_generator_mm import transfer_illumination_aug_parameters
 
-class H5TrackingIterator(H5SegmentationIterator):
+class H5TrackingIterator(H5MultiChannelIterator):
 	def __init__(self,
 				h5py_file_path,
 				channel_keywords=['/raw', '/regionLabels', '/prevRegionLabels', '/edm'],
 				input_channels=[0, 1],
 				output_channels=[2],
-				input_channels_prev=[True, True],
-				input_channels_next=[False, False],
-				output_channels_prev=[False],
-				output_channels_next=[False],
-				mask_channel=1,
+				channels_prev=[True, True, True, True],
+				channels_next=[False, False, False, False],
+				mask_channels=[1, 2, 3],
 				channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
 				group_keyword=None,
 				image_data_generators=None,
@@ -26,85 +24,95 @@ class H5TrackingIterator(H5SegmentationIterator):
 				seed=None,
 				dtype='float32'):
 
-		if len(input_channels_next)!=len(input_channels):
-			raise ValueError("length of input_channels_next differs from input_channels")
-		if len(input_channels_prev)!=len(input_channels):
-			raise ValueError("length of input_channels_prev differs from input_channels")
-		if len(output_channels_next)!=len(output_channels):
-			raise ValueError("length of input_channels_next differs from output_channels")
-		if len(output_channels_prev)!=len(output_channels):
-			raise ValueError("length of input_channels_prev differs from output_channels")
+		if len(channels_next)!=len(channel_keywords):
+			raise ValueError("length of channels_next differs from channel_keywords")
+		if len(channels_prev)!=len(channel_keywords):
+			raise ValueError("length of channels_prev differs from channel_keywords")
 
-		if (any(input_channels_prev) or any(output_channels_prev)) and not input_channels_prev[0]:
-			raise ValueError("Previous time point of first channel should be returned if previous time point from another channel is returned")
-		if (any(input_channels_next) or any(output_channels_next)) and not input_channels_next[0]:
-			raise ValueError("Next time point of first channel should be returned if next time point from another channel is returned")
+		if any(channels_prev) and not channels_prev[mask_channels[0]]:
+			raise ValueError("Previous time point of first mask channel should be returned if previous time point from another channel is returned")
+		if any(channels_next) and not channels_next[mask_channels[0]]:
+			raise ValueError("Next time point of first mask channel should be returned if next time point from another channel is returned")
 
-		self.input_channels_prev=input_channels_prev
-		self.input_channels_next=input_channels_next
-		self.output_channels_prev=output_channels_prev
-		self.output_channels_next=output_channels_next
-		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, mask_channel, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		self.channels_prev=channels_prev
+		self.channels_next=channels_next
+		self.aug_remove_prob = 0.05 # set current image as prev / next
+		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, mask_channels, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
-	def _include_next(self, chan_idx, is_input):
-		if is_input:
-			if chan_idx not in self.input_channels:
-				return False
-			idx = self.input_channels.index(chan_idx)
-			return self.input_channels_next[idx]
-		else:
-			if chan_idx not in self.output_channels:
-				return False
-			idx = self.output_channels.index(chan_idx)
-			return self.output_channels_next[idx]
-
-	def _include_prev(self, chan_idx, is_input):
-		if is_input:
-			if chan_idx not in self.input_channels:
-				return False
-			idx = self.input_channels.index(chan_idx)
-			return self.input_channels_prev[idx]
-		else:
-			if chan_idx not in self.output_channels:
-				return False
-			idx = self.output_channels.index(chan_idx)
-			return self.output_channels_prev[idx]
-
-	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, is_input, aug_param_array=None, perform_augmentation=True):
-		if is_input and chan_idx==0: # signal indices without neighbor time point (absent or result of data augmentation)
-			if self._include_prev(0, True):
-				self._set_has_neigh_parameters(index_ds, index_array, aug_param_array, True, perform_augmentation)
-			if self._include_next(0, True):
-				self._set_has_neigh_parameters(index_ds, index_array, aug_param_array, False, perform_augmentation)
-		def transfer_aug_param_function(source, dest, ds_idx, im_idx):
-			if len(source) <= 2 and ("no_prev" in source or "no_next" in source or "no_prev_aug" in source or "no_next_aug" in source): # special case: channel 0 input, augmentation parameter was initiated to signal no prev / no next: parameters are actually contained in dest
-				for k in source.keys(): # copy prev / next signaling needed to limit augmentation parameters
-					dest[k] = source[k]
-				if dest.get('zx', 1)>1: # forbid zx>1 if there are object @ border @ prev/next time point because zoom will be copied to prev/next transformation
-					if "no_prev" in source and not source['no_prev']:
-						has_object_up, has_object_down = self._has_object_at_y_borders(self.mask_channel, ds_idx, im_idx - 1)
-						if has_object_up or has_object_down:
-							dest["zx"] = 1
-					elif "no_next" in source and not source['no_next']:
-						has_object_up, has_object_down = self._has_object_at_y_borders(self.mask_channel, ds_idx, im_idx + 1)
-						if has_object_up or has_object_down:
-							dest["zx"] = 1
-				# also copy all element from dest to source, because only source will remain in aug_param_array
-				for k in dest.keys():
-					source[k] = dest[k]
-			else:
-				copy_geom_tranform_parameters(source, dest)
-				if "aug_params_prev" in source:
+	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array=None, perform_augmentation=True):
+		def transfer_aug_param_function(source, dest): # also copies prev/next
+			copy_geom_tranform_parameters(source, dest)
+			if "aug_params_prev" in source:
+				if "aug_params_prev" not in dest:
 					dest["aug_params_prev"] = dict()
-					copy_geom_tranform_parameters(source["aug_params_prev"], dest["aug_params_prev"])
-				if "aug_params_next" in source:
+				copy_geom_tranform_parameters(source["aug_params_prev"], dest["aug_params_prev"])
+			if "aug_params_next" in source:
+				if "aug_params_next" not in dest:
 					dest["aug_params_next"] = dict()
-					copy_geom_tranform_parameters(source["aug_params_next"], dest["aug_params_next"])
+				copy_geom_tranform_parameters(source["aug_params_next"], dest["aug_params_next"])
+		return super()._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array, perform_augmentation, transfer_aug_param_function=transfer_aug_param_function)
 
-		batch = super()._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, is_input, aug_param_array, perform_augmentation, transfer_aug_param_function)
-		batch_prev = self._get_batches_of_transformed_samples_by_channel_neighbor(index_ds, index_array, chan_idx, is_input, aug_param_array, True, perform_augmentation) if self._include_prev(chan_idx, is_input) else None
-		batch_next = self._get_batches_of_transformed_samples_by_channel_neighbor(index_ds, index_array, chan_idx, is_input, aug_param_array, False, perform_augmentation) if self._include_next(chan_idx, is_input) else None
-		#print("channel {} (prev: {}, next: {}) parameters: {}".format(chan_idx, self._include_prev(chan_idx, is_input), self._include_next(chan_idx, is_input), aug_param_array[0][chan_idx]))
+	def _apply_augmentation(self, img, chan_idx, aug_params): # apply separately for prev / cur / next
+		if "aug_params_prev" in aug_params and self.channels_prev[chan_idx]:
+			img[...,0:1] = super()._apply_augmentation(img[...,0:1], chan_idx, aug_params.get("aug_params_prev"))
+		if "aug_params_next" in aug_params and self.channels_next[chan_idx]:
+			img[...,-1:0] = super()._apply_augmentation(img[...,-1:0], chan_idx, aug_params.get("aug_params_next"))
+		cur_chan_idx = 1 if self.channels_prev[chan_idx] else 0
+		img[...,cur_chan_idx:(cur_chan_idx+1)] = super()._apply_augmentation(img[...,cur_chan_idx:(cur_chan_idx+1)], chan_idx, aug_params)
+		return img
+
+	def _get_data_augmentation_parameters(self, chan_idx, ref_chan_idx, batch, idx, index_ds, index_array):
+		batch_chan_idx = 1 if self.channels_prev[chan_idx] else 0
+		params = super()._get_data_augmentation_parameters(chan_idx, ref_chan_idx, batch[...,batch_chan_idx:(batch_chan_idx+1)], idx, index_ds, index_array)
+		if chan_idx==ref_chan_idx and chan_idx in self.mask_channels:
+			if self.channels_prev[chan_idx] :
+				try:
+					self.image_data_generators[chan_idx].adjust_augmentation_param_from_neighbor_mask(params, batch[idx,...,0])
+				except AttributeError: # data generator does not have this method
+					pass
+			if self.channels_next[chan_idx]:
+				try:
+					self.image_data_generators[chan_idx].adjust_augmentation_param_from_neighbor_mask(params, batch[idx,...,-1])
+				except AttributeError: # data generator does not have this method
+					pass
+		if self.channels_prev[chan_idx]:
+			params_prev = super()._get_data_augmentation_parameters(chan_idx, ref_chan_idx, batch[...,0:1], idx, index_ds, index_array)
+			self._transfer_illumination_aug_param(params, params_prev)
+			self._transfer_geom_aug_param_neighbor(params, params_prev)
+			try:
+				self.image_data_generators[chan_idx].adjust_augmentation_param_from_mask(params_prev, batch[idx,...,0])
+			except AttributeError: # data generator does not have this method
+				pass
+			params["aug_params_prev"] = params_prev
+		if self.channels_next[chan_idx]:
+			params_next = super()._get_data_augmentation_parameters(chan_idx, ref_chan_idx, batch[...,-1:0], idx, index_ds, index_array)
+			self._transfer_illumination_aug_param(params, params_next)
+			self._transfer_geom_aug_param_neighbor(params, params_next)
+			try:
+				self.image_data_generators[chan_idx].adjust_augmentation_param_from_mask(params_next, batch[idx,...,-1])
+			except AttributeError: # data generator does not have this method
+				pass
+			params["aug_params_next"] = params_next
+		return params
+
+	def _transfer_geom_aug_param_neighbor(self, source, dest): # transfer affine parameters that must be identical between curent and prev/next image
+		dest['flip_vertical'] = source.get('flip_vertical', False) # flip must be the same
+		dest['zy'] = source.get('zy', 1) # zoom should be the same so that cell aspect does not change too much
+		dest['zx'] = source.get('zx', 1) # zoom should be the same so that cell aspect does not change too much
+		dest['shear'] = source.get('shear', 0) # shear should be the same so that cell aspect does not change too much
+
+	def _transfer_illumination_aug_param(self, source, dest):
+		# illumination parameters should be the same between current and neighbor images
+		transfer_illumination_aug_parameters(source, dest)
+		if 'brightness' in source:
+			dest['brightness'] = source['brightness']
+		elif 'brightness' in dest:
+			del dest['brightness']
+
+	def _read_image_batch(self, index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array):
+		batch = super()._read_image_batch(index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array)
+		batch_prev = self._read_image_batch_neigh(index_ds, index_array, chan_idx, ref_chan_idx, True, aug_param_array) if self.channels_prev[chan_idx] else None
+		batch_next = self._read_image_batch_neigh(index_ds, index_array, chan_idx, ref_chan_idx, False, aug_param_array) if self.channels_prev[chan_idx] else None
 		if batch_prev is not None and batch_next is not None:
 			return np.concatenate((batch_prev, batch, batch_next), axis=-1)
 		elif batch_prev is not None:
@@ -114,45 +122,26 @@ class H5TrackingIterator(H5SegmentationIterator):
 		else:
 			return batch
 
-	def _set_has_neigh_parameters(self, index_ds, index_array, aug_param_array, prev , perform_augmentation=True, aug_remove_prob=0.1):
+	def _read_image_batch_neigh(self, index_ds, index_array, chan_idx, ref_chan_idx, prev, aug_param_array):
+		no_neigh = 'no_prev' if prev else 'no_next'
 		inc = -1 if prev else 1
-		no_neigh_key = "no_prev" if prev else "no_next"
-		no_neigh_aug_key = "no_prev_aug" if prev else "no_next_aug"
+		if chan_idx==ref_chan_idx: # flag that there is no neighbor in aug_param_array for further computation
+			for i, (ds_idx, im_idx) in enumerate(zip(index_ds, index_array)):
+				neigh_lab = get_neighbor_label(self.labels[ds_idx][im_idx], prev=prev)
+				bound_idx = 0 if prev else len(self.labels[ds_idx]) - 1
+				if im_idx==bound_idx or neigh_lab!=self.labels[ds_idx][im_idx+inc]: # no neighbor image + signal in order to erase displacement map in further steps
+					aug_param_array[i][ref_chan_idx][no_neigh] = True
+				elif self.perform_data_augmentation and aug_param_array is not None and random() < self.aug_remove_prob: # neighbor image is replaced by current image as part of data augmentation + signal in order to set constant displacement map in further steps
+					aug_param_array[i][ref_chan_idx][no_neigh] = True
+				else:
+					aug_param_array[i][ref_chan_idx][no_neigh] = False
 
-		for i, (ds_idx, im_idx) in enumerate(zip(index_ds, index_array)):
-			neigh_lab = get_neighbor_label(self.labels[ds_idx][im_idx], prev=prev)
-			bound_idx = 0 if prev else len(self.labels[ds_idx])-1
-			if aug_param_array[i][0] is None:
-				aug_param_array[i][0] = dict()
-			if im_idx==bound_idx or neigh_lab!=self.labels[ds_idx][im_idx+inc]: # no neighbor image + signal in order to erase displacement map in further steps
-				aug_param_array[i][0][no_neigh_key] = True
-			elif self.perform_data_augmentation and perform_augmentation and random() < aug_remove_prob: # neighbor image is erased as part of data augmentation + signal in order to set constant displacement map in further steps
-				aug_param_array[i][0][no_neigh_aug_key] = True
-			else:
-				aug_param_array[i][0][no_neigh_key] = False # signal that prev / next will be fetched
-
-	def _get_batches_of_transformed_samples_by_channel_neighbor(self, index_ds, index_array, chan_idx, is_input, aug_param_array, prev, perform_augmentation=True):
-		inc = -1 if prev else 1
-		no_neigh_key = "no_prev" if prev else "no_next"
-		no_neigh_aug_key = "no_prev_aug" if prev else "no_next_aug"
-		aug_key = "aug_params_prev" if prev else "aug_params_next"
-		dy_shift_key = 'dy_shift_prev' if prev else 'dy_shift_next'
-
-		def transfer_aug_param_function(source, dest, ds_idx, im_idx):
-			self._transfer_illumination_aug_param(source, dest)
-			if aug_key not in source: # geom transformation are constrained by parameters of current time point
-				self._transfer_geom_aug_param_neighbor(source, dest, prev, ds_idx, im_idx)
-				source[aug_key] = dest  # also stores the paramaters in the source for next channels
-				source[dy_shift_key] = (source.get('tx', 0) - dest.get('tx', 0)) * inc # also store dy shift (# todo source/dest inverted ? )
-			else: # geom parameters are copied from neighbor time point of the first augmented channel
-				copy_geom_tranform_parameters(source[aug_key], dest)
-
-		# define new index array. no prev / no next tag is in the aug_param_array
 		index_array = np.copy(index_array)
 		index_array += inc
-		missing_idx = [i for i in range(len(aug_param_array)) if aug_param_array[i][0].get(no_neigh_key, False) or aug_param_array[i][0].get(no_neigh_aug_key, False)]
-		index_array[missing_idx] -= inc
-		return super()._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, is_input, aug_param_array, perform_augmentation, transfer_aug_param_function)
+		for i in range(len(index_ds)): # missing images -> set current image instead.
+			if aug_param_array[i][ref_chan_idx][no_neigh]:
+				index_array[i] -= inc
+		return super()._read_image_batch(index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array)
 
 	def train_test_split(self, **options):
 		train_iterator, test_iterator = super().train_test_split(**options)
@@ -180,21 +169,6 @@ class H5TrackingIterator(H5SegmentationIterator):
 			if im_idx!=bound_idx and neigh_lab==self.labels[ds_idx][im_idx+inc]:
 				res.append(index_array[i]+inc)
 		return res
-
-	def _transfer_geom_aug_param_neighbor(self, source, dest, prev, ds_idx, im_idx): # transfer affine parameters that must be identical between curent and prev/next image
-		dest['flip_vertical'] = source.get('flip_vertical', False) # flip must be the same
-		dest['zy'] = source.get('zy', 1) # zoom should be the same so that cell aspect does not change too much
-		dest['zx'] = source.get('zx', 1) # zoom should be the same so that cell aspect does not change too much
-		dest['shear'] = source.get('shear', 0) # shear should be the same so that cell aspect does not change too much
-		self._forbid_transformations_if_object_touching_borders(dest, self.mask_channel, ds_idx, im_idx) # im_idx are already those of prev/next image
-
-	def _transfer_illumination_aug_param(self, source, dest):
-		# illumination parameters should be the same between current and neighbor images
-		transfer_illumination_aug_parameters(source, dest)
-		if 'brightness' in source:
-			dest['brightness'] = source['brightness']
-		elif 'brightness' in dest:
-			del dest['brightness']
 
 # class util methods
 def get_neighbor_label(label, prev):

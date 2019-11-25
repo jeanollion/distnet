@@ -1,20 +1,21 @@
 from dlutils import H5TrackingIterator
 import numpy as np
-from scipy.ndimage import center_of_mass
+from scipy.ndimage import center_of_mass, find_objects
 from scipy.ndimage.measurements import mean
 from math import copysign
+from dlutils.image_data_generator_mm import has_object_at_y_borders
+
 class H5dyIterator(H5TrackingIterator):
 	def __init__(self,
 		h5py_file_path,
 		channel_keywords=['/raw', '/regionLabels', '/prevRegionLabels', '/edm'], # channel @1 must be label & @2 previous label
-		input_channels=[0, 3],
-		output_channels = [],
-		input_channels_prev=[True, True],
-		input_channels_next=[False, False],
-		output_channels_prev=[],
-		output_channels_next=[],
+		input_channels=[0],
+		output_channels = [1, 2, 3],
+		channels_prev=[True, True, False, True],
 		return_categories = False,
-		mask_channel=1,
+		mask_channels=[1, 2, 3],
+		closed_end = True,
+		erase_cut_cell_length = 20,
 		channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
 		group_keyword=None,
 		image_data_generators=None,
@@ -24,39 +25,59 @@ class H5dyIterator(H5TrackingIterator):
 		seed=None,
 		dtype='float32'):
 		if len(channel_keywords)<3:
-			raise ValueError('keyword should have at least 3 elements: input images, object labels, object previous labels')
+			raise ValueError('keyword should have at least 3 elements in this order: grayscale input images, object labels, object previous labels')
+		if 1 not in output_channels:
+			raise ValueError("labels must be returned as output")
+		if 2 not in output_channels:
+			raise ValueError("prev labels must be returned as output")
+		if not channels_prev[1]:
+			raise ValueError("previous timepoint of labels must be returned as output")
+		if channels_prev[2]:
+			raise ValueError("previous timepoint of prev labels must not be returned as output")
 		self.return_categories=return_categories
-		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, input_channels_prev, input_channels_next, output_channels_prev, output_channels_next, mask_channel, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		self.closed_end=closed_end
+		self.erase_cut_cell_length=erase_cut_cell_length
+		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, channels_prev, [False]*len(channel_keywords), mask_channels, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
-	def _get_output_batch(self, index_ds, index_array, aug_param_array=None):
-		# dy is computed and returned
-		# label and prev label
-		oc = self.output_channels
-		ocp = self.output_channels_prev
-		ocn = self.output_channels_next
-		self.output_channels = [1]
-		self.output_channels_prev = [True]
-		self.output_channels_next = [False]
-		labelIms = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 1, False, aug_param_array, perform_augmentation=True)
-		prevlabelIms = self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, 2, False, aug_param_array, perform_augmentation=True)
-		self.output_channels = oc
-		self.output_channels_prev = ocp
-		self.output_channels_next = ocn
-
+	def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
+		# dy is computed and returned instead of labels & prevLabels
+		labelIms = batch_by_channel[1]
+		prevlabelIms = batch_by_channel[2]
 		no_neigh_key = "no_prev"
-		no_neigh_aug_key = "no_prev_aug"
+
+		# remove small objects
+		mask_to_erase_cur = [chan_idx for chan_idx in self.mask_channels if chan_idx!=1 and chan_idx in batch_by_channel]
+		mask_to_erase_chan_cur = [1 if self.channels_prev[chan_idx] else 0 for chan_idx in mask_to_erase_cur]
+		mask_to_erase_prev = [chan_idx for chan_idx in mask_to_erase_cur if self.channels_prev[chan_idx]]
+		for i in range(labelIms.shape[0]):
+			# cur timepoint
+			labels_to_erase = get_small_objects_to_erase(labelIms[i,...,1], self.erase_cut_cell_length, self.closed_end)
+			if len(labels_to_erase)>0:
+				# erase in all mask image then in label image
+				slice = labelIms[i,...,1] == labels_to_erase
+				for mask_chan_idx, c in zip(mask_to_erase_cur, mask_to_erase_chan_cur):
+					batch_by_channel[mask_chan_idx][i,...,c][slice]=0
+				labelIms[i,...,1][slice] = 0
+			# prev timepoint
+			labels_to_erase = get_small_objects_to_erase(labelIms[i,...,0], self.erase_cut_cell_length, self.closed_end)
+			if len(labels_to_erase)>0:
+				slice = labelIms[i,...,0]==labels_to_erase
+				for mask_chan_idx in mask_to_erase_prev:
+					batch_by_channel[mask_chan_idx][i,...,0][slice]=0
+				labelIms[i,...,0][slice] = 0
+
 		dyIm = np.zeros(labelIms.shape[:-1]+(1,), dtype=self.dtype)
 		if self.return_categories:
 			categories = np.zeros(labelIms.shape[:-1]+(1,), dtype=self.dtype)
 		for i in range(labelIms.shape[0]):
-			if aug_param_array is not None and (aug_param_array[i][0].get(no_neigh_key, False) or aug_param_array[i][0].get(no_neigh_aug_key, False)):
+			if aug_param_array is not None and (aug_param_array[i][ref_chan_idx].get(no_neigh_key, False)):
 				prevLabelIm = None
 			else:
 				prevLabelIm = prevlabelIms[i,...,0]
 			_compute_dy(labelIms[i,...,1], labelIms[i,...,0], prevLabelIm, dyIm[i,...,0], categories[i,...,0] if self.return_categories else None)
-
-		if len(self.output_channels)>0:
-			all_channels = [self._get_batches_of_transformed_samples_by_channel(index_ds, index_array, chan_idx, False, aug_param_array, perform_augmentation=True) for chan_idx in self.output_channels]
+		other_output_channels = [chan_idx for chan_idx in self.output_channels if chan_idx!=1 and chan_idx!=2]
+		if len(other_output_channels)>0:
+			all_channels = [batch_by_channel[chan_idx] for chan_idx in other_output_channels]
 			all_channels.insert(0, dyIm)
 			if self.return_categories:
 				all_channels.insert(1, categories)
@@ -66,6 +87,20 @@ class H5dyIterator(H5TrackingIterator):
 		else:
 			return dyIm
 
+def get_small_objects_to_erase(labelIm, min_length, closed_end):
+	has_object_down, has_object_up = has_object_at_y_borders(labelIm)
+	res=set()
+	if closed_end: # only consider lower part
+		has_object_up = False
+	if has_object_up or has_object_down:
+		 stop = labelIm.shape[0]
+		 objects = find_objects(labelIm.astype(np.int))
+		 objects = [o[0] if o is not None else None for o in objects] # keep only first dim # none when missing label
+		 for l, o in enumerate(objects):
+			 if o is not None:
+				 if (not closed_end and o.start==0 and (o.stop - o.start)<min_length) or (o.stop==stop and (o.stop - o.start)<min_length):
+					 res.add(l+1)
+	return list(res)
 # dy computation utils
 def _get_prev_lab(labelIm_of_prevCells, labelIm, label, center):
 	prev_lab = int(labelIm_of_prevCells[int(round(center[0])), int(round(center[1]))])
@@ -86,7 +121,7 @@ def _compute_dy(labelIm, labelIm_prev, labelIm_of_prevCells, dyIm, categories=No
 	if len(labels)==0:
 		return np.zeros(labelIm.shape, dtype=labelIm.dtype)
 	labels_prev, centers_prev = _get_labels_and_centers(labelIm_prev)
-	if labelIm_of_prevCells is None: # previous image is (augmented) current image
+	if labelIm_of_prevCells is None: # previous (augmented) image is current image
 		labels_of_prev = labels
 	else:
 		labels_of_prev = [_get_prev_lab(labelIm_of_prevCells, labelIm, label, center) for label, center in zip(labels, centers)]

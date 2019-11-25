@@ -2,11 +2,12 @@ from keras_preprocessing.image import ImageDataGenerator
 import numpy as np
 from math import tan, atan, pi, copysign
 import dlutils.pre_processing_utils as pp
-from random import getrandbits, uniform
+from random import getrandbits, uniform, choice
 import copy
+import scipy.ndimage as ndi
 
 class ImageDataGeneratorMM(ImageDataGenerator):
-    def __init__(self, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, **kwargs):
+    def __init__(self, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, bacteria_swim_distance=50, closed_end=True, **kwargs):
         if width_zoom_range!=0. or height_zoom_range!=0.:
             kwargs["zoom_range"] = 0.
             if np.isscalar(width_zoom_range):
@@ -43,10 +44,18 @@ class ImageDataGeneratorMM(ImageDataGenerator):
         self.illumination_voodoo_n_points=illumination_voodoo_n_points
         self.illumination_voodoo_intensity=illumination_voodoo_intensity
         self.perform_illumination_augmentation = perform_illumination_augmentation
+        self.bacteria_swim_distance=bacteria_swim_distance
+        self.closed_end = closed_end
         super().__init__(**kwargs)
 
     def get_random_transform(self, img_shape, seed=None):
         params = super().get_random_transform(img_shape, seed)
+        if self.closed_end:
+            if params.get("tx", 0)>0:
+                params["tx"] = 0
+            if params.get("flip_vertical", False):
+                params["flip_vertical"]=False
+
         if self.width_zoom_range is not None:
             if self.width_zoom_range[0] == 1 and self.width_zoom_range[1] == 1:
                 zy = 1
@@ -131,18 +140,57 @@ class ImageDataGeneratorMM(ImageDataGenerator):
 
             if self.histogram_voodoo_n_points>0 and self.histogram_voodoo_intensity>0 and not getrandbits(1):
                 # draw control points
-                min = params["vmin"]
-                max = params["vmax"]
-                control_points = np.linspace(min, max, num=self.histogram_voodoo_n_points + 2)
+                vmin = params["vmin"]
+                vmax = params["vmax"]
+                control_points = np.linspace(vmin, vmax, num=self.histogram_voodoo_n_points + 2)
                 target_points = pp.get_histogram_voodoo_target_points(control_points, self.histogram_voodoo_intensity)
                 params["histogram_voodoo_target_points"] = target_points
             if self.illumination_voodoo_n_points>0 and self.illumination_voodoo_intensity>0 and not getrandbits(1):
                 params["illumination_voodoo_target_points"] = pp.get_illumination_voodoo_target_points(self.illumination_voodoo_n_points, self.illumination_voodoo_intensity)
         return params
 
+    def adjust_augmentation_param_from_mask(self, params, mask_img):
+        if self.closed_end and params['zx']<1: # zoom in -> translate avoid upper part to be cut. this needs to be located here and not in get_random_transform because  cur zx is copied to prev / next
+            params['tx'] = min(params.get("tx", 0), - mask_img.shape[0] * (1 - params['zx']) / 2 )
+        forbid_transformations_if_object_touching_borders(params, mask_img, self.closed_end)
+        if self.bacteria_swim_distance>1:
+            # get y space between bacteria
+            space_y = np.invert(np.any(mask_img, 1)).astype(np.int)
+            space_y, n_lab = ndi.label(space_y)
+            space_y = ndi.find_objects(space_y)
+            space_y = [slice_obj[0] for slice_obj in space_y] # only first dim
+            limit = mask_img.shape[0]
+            space_y = [slice_obj for slice_obj in space_y if slice_obj.stop - slice_obj.start>4 and slice_obj.start>0 and slice_obj.stop<limit] # keep only slices with length > 4 and not upper / lower space before / after bacteria
+            if len(space_y)>0:
+                space_y = [(slice_obj.stop + slice_obj.start)//2 for slice_obj in space_y]
+                y = choice(space_y)
+                swim_params = {"y": y, "lower": self.closed_end or not getrandbits(1), "distance": uniform(1, self.bacteria_swim_distance)}
+                params["bacteria_swim"] = swim_params
+
+    def adjust_augmentation_param_from_neighbor_mask(self, params, neighbor_mask_img):
+        if params.get('zx', 1)>1: # forbid zx>1 if there are object @ border @ prev/next time point because zoom will be copied to prev/next transformation
+            has_object_up, has_object_down = has_object_at_y_borders(neighbor_mask_img)
+            if has_object_up or has_object_down:
+                params["zx"] = 1
+
     def apply_transform(self, img, params):
+        # swim before geom augmentation with because location must be precisely between 2 bacteria
+        if "bacteria_swim" in params:
+            y = params["bacteria_swim"]["y"]
+            lower = params["bacteria_swim"]["lower"]
+            dist = - params["bacteria_swim"]["distance"]
+            if not lower:
+                dist = - dist
+            translation_params = {"tx" : dist}
+            if lower:
+                img[y:] = super().apply_transform(img[y:], translation_params)
+            else:
+                img[:y] = super().apply_transform(img[:y], translation_params)
+
+        # geom augmentation
         img = super().apply_transform(img, params)
-        #print("parameters:", params)
+
+        # illumination augmentation
         if "vmin" in params and "vmax" in params:
             min = img.min()
             max = img.max()
@@ -211,6 +259,37 @@ class ImageDataGeneratorMM(ImageDataGenerator):
                 delta = (zoom_aspectratio * zy - zx) / (- zoom_aspectratio + 1)
                 return zx+delta, zy+delta
         return delta
+
+def has_object_at_y_borders(mask_img):
+    return np.any(mask_img[[-1,0], :], 1) # np.flip()
+
+def forbid_transformations_if_object_touching_borders(aug_param, mask_img, closed_end):
+    tx = aug_param.get('tx', 0)
+    zx = aug_param.get('zx', 1)
+    shear = 0 #aug_param.get('shear', 0)
+    theta = 0 #aug_param.get('theta', 0)
+    if tx!=0 or zx>1 or theta!=0 or shear!=0:
+        has_object_up, has_object_down = has_object_at_y_borders(mask_img) # up & down as in the displayed image
+        if zx<1:
+            tx_lim = mask_img.shape[0] * (1 - zx) / 2
+        else:
+            tx_lim = 0
+        if (has_object_down and has_object_up):
+            if closed_end:
+                aug_param['tx']=-tx_lim
+            else:
+                aug_param['tx']=0
+        elif has_object_up and tx<-tx_lim:
+            aug_param['tx']=-tx_lim
+        elif has_object_down and tx>tx_lim:
+            aug_param['tx']=tx_lim
+        if has_object_up or has_object_down:
+            if zx>1:
+                aug_param['zx'] = 1
+            if shear!=0:
+                aug_param['shear'] = 0
+            if theta!=0:
+                aug_param['theta'] = 0
 
 def transfer_illumination_aug_parameters(source, dest):
     if "vmin" in source and "vmax" in source:

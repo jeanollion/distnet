@@ -116,6 +116,9 @@ def grayscale_deformation_function(add_noise=True, adjust_histogram_range=True):
 def is_list(l):
     return isinstance(l, (list, tuple, np.ndarray))
 
+def bacteria_swim(img, x, tx, order=1, fill_mode="nearest", cval=0):
+    img[x:] = apply_affine_transform(img[x:], tx=tx, order=order, fill_mode=fill_mode, cval=cval)
+
 def histogram_voodoo(image, num_control_points=5, intensity=0.5, target_points = None):
     '''
     Adapted from delta software: https://gitlab.com/dunloplab/delta/blob/master/data.py
