@@ -112,7 +112,7 @@ class H5TrackingIterator(H5MultiChannelIterator):
 	def _read_image_batch(self, index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array):
 		batch = super()._read_image_batch(index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array)
 		batch_prev = self._read_image_batch_neigh(index_ds, index_array, chan_idx, ref_chan_idx, True, aug_param_array) if self.channels_prev[chan_idx] else None
-		batch_next = self._read_image_batch_neigh(index_ds, index_array, chan_idx, ref_chan_idx, False, aug_param_array) if self.channels_prev[chan_idx] else None
+		batch_next = self._read_image_batch_neigh(index_ds, index_array, chan_idx, ref_chan_idx, False, aug_param_array) if self.channels_next[chan_idx] else None
 		if batch_prev is not None and batch_next is not None:
 			return np.concatenate((batch_prev, batch, batch_next), axis=-1)
 		elif batch_prev is not None:
@@ -148,9 +148,9 @@ class H5TrackingIterator(H5MultiChannelIterator):
 		train_idx = train_iterator.allowed_indexes
 		test_idx = test_iterator.allowed_indexes
 		# remove neighboring time points that are seen by the network. only in terms of ground truth, ie depends on returned values:  previous and next frames or next frame only (displacement)
-		if any(self.output_channels_prev) or any(self.input_channels_prev): # an index visited in train_idx implies the previous one is also seen during training. to avoind that previous index being in test_idx, next indices of test_idx should remove from train_idx
+		if any(self.channels_prev): # an index visited in train_idx implies the previous one is also seen during training. to avoind that previous index being in test_idx, next indices of test_idx should remove from train_idx
 			train_idx = np.setdiff1d(train_idx, self._get_neighbor_indices(test_idx, prev=False))
-		if any(self.output_channels_next) or any(self.input_channels_next): # an index visited in train_idx implies the next one is also seen during training. to avoin that next index being in test_idx, previous indices of test_idx should remove from train_idx
+		if any(self.channels_next): # an index visited in train_idx implies the next one is also seen during training. to avoin that next index being in test_idx, previous indices of test_idx should remove from train_idx
 			train_idx = np.setdiff1d(train_idx, self._get_neighbor_indices(test_idx, prev=True))
 
 		train_iterator.set_allowed_indexes(train_idx)

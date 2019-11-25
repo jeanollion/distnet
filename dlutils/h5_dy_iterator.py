@@ -15,7 +15,7 @@ class H5dyIterator(H5TrackingIterator):
 		return_categories = False,
 		mask_channels=[1, 2, 3],
 		closed_end = True,
-		erase_cut_cell_length = 20,
+		erase_cut_cell_length = 30,
 		channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
 		group_keyword=None,
 		image_data_generators=None,
