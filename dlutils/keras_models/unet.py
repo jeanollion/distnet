@@ -40,7 +40,7 @@ def get_slice_channel_layer(channel, name=None):
     return Lambda(lambda x: x[:,:,:,channel:(channel+1)], name = (name if name else "get_channel")+"_"+str(channel))
 
 class UnetEncoder():
-    def __init__(self, n_down, n_filters, image_shape=None, name="encoder"):
+    def __init__(self, n_down, n_filters, image_shape=None, double_n_filters=True, name="encoder"):
         if image_shape!=None and min(image_shape[0], image_shape[1])/2**n_down<1:
             raise ValueError("too many down convolutions. minimal dimension is {}, number of convlution is {} shape in minimal dimension would be {}".format(min(image_shape[0], image_shape[1]), n_down, min(image_shape[0], image_shape[1])/2**n_down))
         self.image_shape = image_shape
@@ -48,6 +48,7 @@ class UnetEncoder():
         self.layers=[]
         self.n_down = n_down
         self.n_filters=n_filters
+        self.double_n_filters=double_n_filters
         for layer_idx in range(n_down + 1): # +1 -> last feature layer
             self._make_layer(layer_idx)
 
@@ -94,16 +95,21 @@ class UnetEncoder():
         return 3 if current_size>=3 else current_size
 
     def _get_n_filters(self, layer_idx):
-        return self.n_filters * 2**layer_idx
+        if self.double_n_filters:
+            return self.n_filters * 2**layer_idx
+        else:
+            return self.n_filters
 
 class UnetDecoder():
-    def __init__(self, n_up, n_filters, name="decoder"):
+    def __init__(self, n_up, n_filters, double_n_filters=True, n_1x1_conv=0, name="decoder"):
         self.layers=[]
         self.name=name
         self.n_up = n_up
         self.n_filters = n_filters
+        self.double_n_filters=double_n_filters
         for layer_idx in range(n_up):
             self._make_layer(self._get_n_filters(layer_idx), layer_idx)
+        self.last_convs = [Conv2D(n_filters, (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name = self.name+"_conv1x1_"+str(i+1) if self.name else None) for i in range(n_1x1_conv)]
 
     def _make_layer(self, filters, layer_idx):
         filters=int(filters)
@@ -123,6 +129,12 @@ class UnetDecoder():
             last_input = self._decode_layer(last_input, residuals[-layer_idx-1], layer_idx)
             if return_all:
                 all_activations.append(last_input)
+        if len(self.last_convs)>0:
+            for conv in self.last_convs:
+                last_input = conv(last_input)
+                if return_all:
+                    all_activations.append(last_input)
+
         if return_all:
             return all_activations
         else:
@@ -134,7 +146,7 @@ class UnetDecoder():
         if isinstance(input, list):
             input = Concatenate(axis=3)(input)
         encoded, residuals = encoder.encode(input, layers_to_concatenate)
-        return self.decode(encoded, residuals)
+        return (self.decode(encoded, residuals), input)
 
     def _decode_layer(self, input, residual, layer_idx):
         layers = self.layers[layer_idx]
@@ -146,32 +158,70 @@ class UnetDecoder():
         return conv2
 
     def _get_n_filters(self, layer_idx):
-        n= self.n_filters * 2**(self.n_up - layer_idx - 1)
-        return n
+        if self.double_n_filters:
+            return self.n_filters * 2**(self.n_up - layer_idx - 1)
+        else:
+            return self.n_filters
 
-def get_unet_model(image_shape, n_down, filters=64, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1, n_hourglass=1):
+def concat_and_conv(inputs, n_filters, layer_name):
+    concat = Concatenate(axis=3, name = layer_name+"_concat")(inputs)
+    return Conv2D(n_filters, (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name = layer_name+"_conv1x1")(concat)
+
+
+def get_unet_model(image_shape, n_down, filters=64, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1, n_1x1_conv=0, double_n_filters=True, n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True):
     n_output_channels = _ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = _ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = _ensure_multiplicity(n_inputs, n_input_channels)
 
-    encoders = [UnetEncoder(n_down, filters, image_shape, name="encoder"+str(i)+"_") for i in range(0, n_hourglass)]
-    decoders = [UnetDecoder(n_down, filters, name="decoder"+str(i)+"_") for i in range(0, n_hourglass)]
+    encoders = [UnetEncoder(n_down, filters, image_shape, double_n_filters=double_n_filters, name="encoder"+str(i)+"_") for i in range(n_stack)]
+    decoders = [UnetDecoder(n_down, filters, n_1x1_conv=n_1x1_conv, double_n_filters=double_n_filters, name="decoder"+str(i)+"_") for i in range(n_stack)]
 
     if n_inputs>1:
         input = [Input(shape = image_shape+(n_input_channels[i],), name="input"+str(i)) for i in range(n_inputs)]
     else:
         input = Input(shape = image_shape+(n_input_channels[0],), name="input")
 
-    last_decoded = decoders[0].encode_and_decode(input, encoders[0])
-    for i in range(1, n_hourglass):
-        last_decoded = decoders[i].encode_and_decode(last_decoded, encoders[i])
+    def get_output(layer, rank=0):
+        name = "" if rank==0 else "_i"+str(rank)+"_"
+        if n_outputs>1:
+            return [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+name+str(i))(layer) for i in range(n_outputs)]
+        else:
+            return Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output"+name)(layer)
 
-    if n_outputs>1:
-        output = [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+str(i))(last_decoded) for i in range(n_outputs)]
+    def get_intermediate_input(decoded_1, decoded_2, intermediate_outputs, rank):
+        if not stacked_skip_conection and not stacked_intermediate_outputs:
+            return decoded_2
+        concat = [decoded_2]
+        if stacked_skip_conection and decoded_1 is not None:
+            concat.append(decoded_1)
+        if intermediate_outputs is not None:
+            append_to_list(concat, intermediate_outputs)
+        return concat_and_conv(concat, filters, "intermediate_"+str(rank))
+
+    all_outputs = []
+    dec, _input = decoders[0].encode_and_decode(input, encoders[0]) # if several inputs _input = concatenated tensor
+    decoded_layers = [dec]
+    for i in range(1, n_stack):
+        if stacked_intermediate_outputs:
+            all_outputs.append(get_output(decoded_layers[-1], rank=i))
+        intermediate_input = get_intermediate_input(decoded_layers[-2] if i>1 else None, decoded_layers[-1], all_outputs[-1] if stacked_intermediate_outputs else None, i)
+        decoded, _ = decoders[i].encode_and_decode(intermediate_input, encoders[i])
+        decoded_layers.append(decoded)
+
+    all_outputs.append(get_output(decoded_layers[-1]))
+    return Model(input, flatten_list(all_outputs))
+
+def flatten_list(l):
+    flat_list = []
+    for item in l:
+        append_to_list(flat_list, item)
+    return flat_list
+
+def append_to_list(l, element):
+    if isinstance(element, list):
+        l.extend(element)
     else:
-        output = Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output")(last_decoded)
-
-    return Model(input, output)
+        l.append(element)
 
 def _ensure_multiplicity(n, object):
      if not isinstance(object, list):
