@@ -14,6 +14,7 @@ class H5dyIterator(H5TrackingIterator):
 		channels_prev=[True, True, False, True],
 		return_categories = False,
 		mask_channels=[1, 2, 3],
+		output_multiplicity = 1,
 		closed_end = True,
 		erase_cut_cell_length = 30,
 		channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
@@ -37,7 +38,7 @@ class H5dyIterator(H5TrackingIterator):
 		self.return_categories=return_categories
 		self.closed_end=closed_end
 		self.erase_cut_cell_length=erase_cut_cell_length
-		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, channels_prev, [False]*len(channel_keywords), mask_channels, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, channels_prev, [False]*len(channel_keywords), mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
 		# dy is computed and returned instead of labels & prevLabels

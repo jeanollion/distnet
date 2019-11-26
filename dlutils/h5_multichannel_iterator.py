@@ -17,6 +17,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 				input_channels=[0],
 				output_channels=[0],
 				mask_channels=[],
+				output_multiplicity = 1,
 				channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
 				group_keyword=None,
 				image_data_generators=None,
@@ -32,6 +33,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		self.dtype = dtype
 		self.perform_data_augmentation=perform_data_augmentation
 		self.mask_channels = mask_channels
+		self.output_multiplicity=output_multiplicity
 		if output_channels is None:
 			output_channels = []
 		if input_channels is None or len(input_channels)==0:
@@ -176,10 +178,23 @@ class H5MultiChannelIterator(IndexArrayIterator):
 			return self._get_input_batch(batch_by_channel, ref_chan_idx, aug_param_array)
 		elif self.input_channels==self.output_channels:
 			batch = self._get_input_batch(batch_by_channel, ref_chan_idx, aug_param_array)
-			return (batch, batch)
+			if self.output_multiplicity>1:
+				if not isinstance(batch, list):
+					output = [batch] * self.output_multiplicity
+				else:
+					output = batch * self.output_multiplicity
+			else:
+				output = batch
+			return (batch, output)
 		else:
-
-			return (self._get_input_batch(batch_by_channel, ref_chan_idx, aug_param_array), self._get_output_batch(batch_by_channel, ref_chan_idx, aug_param_array))
+			input = self._get_input_batch(batch_by_channel, ref_chan_idx, aug_param_array)
+			output = self._get_output_batch(batch_by_channel, ref_chan_idx, aug_param_array)
+			if self.output_multiplicity>1:
+				if not isinstance(output, list):
+					output = [output] * self.output_multiplicity
+				else:
+					output = output * self.output_multiplicity
+			return (input, output)
 
 	def _get_batch_by_channel(self, index_array, perform_augmentation, input_only=False):
 		if self.h5py_file is None: # for concurency issues: file is open lazyly by each worker

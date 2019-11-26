@@ -15,6 +15,7 @@ class H5TrackingIterator(H5MultiChannelIterator):
 				channels_prev=[True, True, True, True],
 				channels_next=[False, False, False, False],
 				mask_channels=[1, 2, 3],
+				output_multiplicity = 1,
 				channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
 				group_keyword=None,
 				image_data_generators=None,
@@ -37,7 +38,7 @@ class H5TrackingIterator(H5MultiChannelIterator):
 		self.channels_prev=channels_prev
 		self.channels_next=channels_next
 		self.aug_remove_prob = 0.05 # set current image as prev / next
-		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, mask_channels, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array=None, perform_augmentation=True):
 		def transfer_aug_param_function(source, dest): # also copies prev/next
