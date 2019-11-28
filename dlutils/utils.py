@@ -98,3 +98,21 @@ def export_model_bundle(model, outdir):
     inputs = dict(zip([input.op.name for input in model.inputs], model.inputs))
     tf.saved_model.simple_save(K.get_session(), export_dir=outdir, inputs=inputs, outputs=outputs)
     #print("inputs: {}, outputs: {}".format(inputs, outputs))
+
+def evaluate(iterator, model, losses_names=["Loss"], acc_names=[], xp_idx_in_path=2, position_idx_in_path=3):
+    try:
+        import pandas as pd
+    except ImportError as error:
+        print("Pandas not installed")
+        return
+
+    arr, paths, labels, indices = test_it.evaluate(model)
+    df = pd.DataFrame(arr)
+    if len(losses_names)+len(acc_names)+2 != df.shape[1]:
+        raise ValueError("Invalid loss / accuracy name: expected: {} names, got: {} names".format(df.shape[1]-2, len(losses_names)+len(acc_names)))
+    df.columns=["Idx", "dsIdx"]+losses_names + acc_names
+    df["Indices"] = pd.Series(indices)
+    dsInfo = np.asarray([p.split('/') for p in paths])
+    df["XP"] = pd.Series(dsInfo[:,xp_idx_in_path])
+    df["Position"] = pd.Series(dsInfo[:,position_idx_in_path])
+    return df
