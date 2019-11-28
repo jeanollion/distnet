@@ -411,8 +411,8 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		self._set_index_array() # in case shuffle was true.
 		outputs = []
 		for step in range(len(self)):
-		    x, y = self.next()
-		    outputs.append(model.evaluate(x=x, y=y, verbose=0))
+			x, y = self.next()
+			outputs.append(model.evaluate(x=x, y=y, verbose=0))
 			if progress_callback is not None:
 				progress_callback()
 		self.batch_size = batch_size
