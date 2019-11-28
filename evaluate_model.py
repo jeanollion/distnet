@@ -1,7 +1,7 @@
 import sys
 sys.path.append('/data/Dev/DL_Utils')
 import dlutils.keras_models as km
-from dutils.utils import evaluate_model
+from dlutils.utils import evaluate_model
 from keras.optimizers import Adam
 from keras import metrics
 import itertools

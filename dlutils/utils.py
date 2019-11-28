@@ -106,7 +106,7 @@ def evaluate_model(iterator, model, losses_names=["Loss"], acc_names=[], xp_idx_
         print("Pandas not installed")
         return
 
-    arr, paths, labels, indices = test_it.evaluate(model)
+    arr, paths, labels, indices = iterator.evaluate(model)
     df = pd.DataFrame(arr)
     if len(losses_names)+len(acc_names)+2 != df.shape[1]:
         raise ValueError("Invalid loss / accuracy name: expected: {} names, got: {} names".format(df.shape[1]-2, len(losses_names)+len(acc_names)))
