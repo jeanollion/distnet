@@ -189,7 +189,7 @@ def get_unet_model(image_shape, n_down, filters=64, n_outputs=1, n_output_channe
             return Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output"+name)(layer)
 
     def get_intermediate_input(decoded_1, decoded_2, intermediate_outputs, rank):
-        if not stacked_skip_conection and not stacked_intermediate_outputs:
+        if (not stacked_skip_conection or decoded_1 is None) and not stacked_intermediate_outputs:
             return decoded_2
         concat = [decoded_2]
         if stacked_skip_conection and decoded_1 is not None:
