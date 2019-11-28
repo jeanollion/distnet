@@ -425,9 +425,8 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		labels = [self.labels[i][j] for i,j in zip(ds_idx, idx)]
 		values = np.stack(outputs)
 		values = np.c_[idx, ds_idx, values]
-		path = np.expand_dims(path, 1)
-		strings = np.c_[path, labels]
-		return values, strings
+		indices = [str(int(s[1]))+"-"+s[0].split('-')[1] for s in [l.split("_f") for l in labels]]
+		return values, path, labels, indices
 # class util methods
 def copy_geom_tranform_parameters(aug_param_source, aug_param_dest):
 	aug_param_dest['theta'] = aug_param_source.get('theta', 0)
