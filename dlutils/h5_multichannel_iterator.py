@@ -400,7 +400,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		off = ds.attrs.get('scaling_center', [0])[0] # supposes there are no other scaling for mask channel
 		return np.any(ds[im_idx, [-1,0], :] - off, 1) # np.flip()
 
-	def evaluate(self, model):
+	def evaluate(self, model, progress_callback=None):
 		batch_size = self.batch_size
 		shuffle = self.shuffle
 		perform_aug = self.perform_data_augmentation
@@ -408,11 +408,13 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		self.shuffle=False
 		self.perform_data_augmentation=False
 		self.reset()
-		self._set_index_array() # if shuffle was true
+		self._set_index_array() # in case shuffle was true
 		outputs = []
 		for step in range(len(self)):
 		    x, y = self.next()
 		    outputs.append(model.evaluate(x=x, y=y, verbose=0))
+			if progress_callback is not None:
+				progress_callback()
 		self.batch_size = batch_size
 		self.shuffle = shuffle
 		self.perform_data_augmentation = perform_aug

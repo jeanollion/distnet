@@ -99,14 +99,14 @@ def export_model_bundle(model, outdir):
     tf.saved_model.simple_save(K.get_session(), export_dir=outdir, inputs=inputs, outputs=outputs)
     #print("inputs: {}, outputs: {}".format(inputs, outputs))
 
-def evaluate_model(iterator, model, losses_names=["Loss"], acc_names=[], xp_idx_in_path=2, position_idx_in_path=3):
+def evaluate_model(iterator, model, losses_names=["Loss"], acc_names=[], xp_idx_in_path=2, position_idx_in_path=3, progress_callback=None):
     try:
         import pandas as pd
     except ImportError as error:
         print("Pandas not installed")
         return
 
-    arr, paths, labels, indices = iterator.evaluate(model)
+    arr, paths, labels, indices = iterator.evaluate(model, progress_callback=progress_callback)
     df = pd.DataFrame(arr)
     if len(losses_names)+len(acc_names)+2 != df.shape[1]:
         raise ValueError("Invalid loss / accuracy name: expected: {} names, got: {} names".format(df.shape[1]-2, len(losses_names)+len(acc_names)))
