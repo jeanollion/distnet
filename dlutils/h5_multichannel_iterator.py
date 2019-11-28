@@ -408,7 +408,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		self.shuffle=False
 		self.perform_data_augmentation=False
 		self.reset()
-		self._set_index_array() # in case shuffle was true
+		self._set_index_array() # in case shuffle was true.
 		outputs = []
 		for step in range(len(self)):
 		    x, y = self.next()
