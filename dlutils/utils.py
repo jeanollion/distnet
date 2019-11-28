@@ -99,7 +99,7 @@ def export_model_bundle(model, outdir):
     tf.saved_model.simple_save(K.get_session(), export_dir=outdir, inputs=inputs, outputs=outputs)
     #print("inputs: {}, outputs: {}".format(inputs, outputs))
 
-def evaluate(iterator, model, losses_names=["Loss"], acc_names=[], xp_idx_in_path=2, position_idx_in_path=3):
+def evaluate_model(iterator, model, losses_names=["Loss"], acc_names=[], xp_idx_in_path=2, position_idx_in_path=3):
     try:
         import pandas as pd
     except ImportError as error:
