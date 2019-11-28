@@ -171,7 +171,6 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		# Returns
 			A batch of transformed samples (tuple of input and output if output_keyword is specified).
 		"""
-
 		batch_by_channel, aug_param_array, ref_chan_idx = self._get_batch_by_channel(index_array, self.perform_data_augmentation)
 
 		if self.output_channels is None or len(self.output_channels)==0:
@@ -333,7 +332,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		self.shuffle=False
 		perform_aug = self.perform_data_augmentation
 		self.perform_data_augmentation=False
-		self._set_index_array()
+		self._set_index_array() # if shuffle was true
 
 		if np.any(self.index_array[1:] < self.index_array[:-1]):
 			raise ValueError('Index array should be monotonically increasing')
@@ -401,6 +400,34 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		off = ds.attrs.get('scaling_center', [0])[0] # supposes there are no other scaling for mask channel
 		return np.any(ds[im_idx, [-1,0], :] - off, 1) # np.flip()
 
+	def evaluate(self, model):
+		batch_size = self.batch_size
+		shuffle = self.shuffle
+		perform_aug = self.perform_data_augmentation
+		self.batch_size=1
+		self.shuffle=False
+		self.perform_data_augmentation=False
+		self.reset()
+		self._set_index_array() # if shuffle was true
+		outputs = []
+		for step in range(len(self)):
+		    x, y = self.next()
+		    outputs.append(model.evaluate(x=x, y=y, verbose=0))
+		self.batch_size = batch_size
+		self.shuffle = shuffle
+		self.perform_data_augmentation = perform_aug
+
+		# also return dataset dir , index and labels (if availables)
+		idx = np.copy(self.index_array)
+		ds_idx = self._get_ds_idx(idx)
+
+		path = [self.paths[i] for i in ds_idx]
+		labels = [self.labels[i][j] for i,j in zip(ds_idx, idx)]
+		values = np.stack(outputs)
+		values = np.c_[idx, ds_idx, values]
+		path = np.expand_dims(path, 1)
+		strings = np.c_[path, labels]
+		return values, strings
 # class util methods
 def copy_geom_tranform_parameters(aug_param_source, aug_param_dest):
 	aug_param_dest['theta'] = aug_param_source.get('theta', 0)
