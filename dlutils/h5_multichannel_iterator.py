@@ -400,33 +400,52 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		off = ds.attrs.get('scaling_center', [0])[0] # supposes there are no other scaling for mask channel
 		return np.any(ds[im_idx, [-1,0], :] - off, 1) # np.flip()
 
-	def evaluate(self, model, progress_callback=None):
-		batch_size = self.batch_size
+	def evaluate(self, model, metrics, progress_callback=None):
+		if len(metrics) != len(self.output_channels)*self.output_multiplicity:
+			raise ValueError("metrics should be an array of length equal to output number ({})".format(len(self.output_channels)*self.output_multiplicity))
+
 		shuffle = self.shuffle
 		perform_aug = self.perform_data_augmentation
-		self.batch_size=1
 		self.shuffle=False
 		self.perform_data_augmentation=False
 		self.reset()
 		self._set_index_array() # in case shuffle was true.
-		outputs = []
+
+		metrics = [l if isinstance(l, list) else ([] if l is None else [l]) for l in metrics]
+		# count metrics
+		count = 0
+		for m in metrics:
+			count+=len(m)
+		values = np.zeros(shape=(len(self.allowed_indexes), count+2))
+		i=0
 		for step in range(len(self)):
 			x, y = self.next()
-			outputs.append(model.evaluate(x=x, y=y, verbose=0))
+			y_pred = model.predict(x=x, verbose=0)
+			n = y_pred[0].shape[0]
+			j=2
+			for oi, ms in enumerate(metrics):
+				for m in ms:
+					res = m(y[oi], y_pred[oi])
+					n_axis = len(res.shape)
+					if n_axis>1:
+						res = np.mean(res, axis=tuple(range(1,n_axis)))
+					values[i:(i+n), j] = res
+					j=j+1
+			i+=n
+
 			if progress_callback is not None:
 				progress_callback()
-		self.batch_size = batch_size
+
 		self.shuffle = shuffle
 		self.perform_data_augmentation = perform_aug
-
 		# also return dataset dir , index and labels (if availables)
+
 		idx = np.copy(self.index_array)
 		ds_idx = self._get_ds_idx(idx)
-
+		values[:,0] = idx
+		values[:,1] = ds_idx
 		path = [self.paths[i] for i in ds_idx]
 		labels = [self.labels[i][j] for i,j in zip(ds_idx, idx)]
-		values = np.stack(outputs)
-		values = np.c_[idx, ds_idx, values]
 		indices = [str(int(s[1]))+"-"+s[0].split('-')[1] for s in [l.split("_f") for l in labels]]
 		return values, path, labels, indices
 # class util methods
