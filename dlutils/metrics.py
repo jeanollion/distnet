@@ -15,20 +15,33 @@ def category_mask(classes):
         return weights
     return mask_fun
 
-def metric_mask(metric, mask_fun = lambda y_true:np.abs(y_true)>1e-5, null_mask_return_value=1):
+def non_zero_mask(epsilon=1e-5, absolute=True):
+    if absolute:
+        def m_f(y_true):
+            mask = np.zeros(shape=y_true.shape)
+            mask[np.abs(y_true)>epsilon] = 1
+            return mask
+        return m_f
+    else:
+        def m_f(y_true):
+            mask = np.zeros(shape=y_true.shape)
+            mask[y_true>epsilon] = 1
+            return mask
+        return m_f
+
+def metric_mask(metric, mask_fun, null_mask_return_value=np.nan):
     def metric_m(y_true, y_pred):
         mask = mask_fun(y_true)
         metric_value = metric(y_true, y_pred)
         if len(metric_value.shape)==len(mask.shape)-1:
             mask = mask.squeeze(-1)
         avg_axis = tuple(range(1,len(metric_value.shape)))
-        try :
-            return np.average(metric_value, axis=avg_axis, weights=mask)
-        except ZeroDivisionError:
-            return null_mask_return_value
+        avg, sum = np.ma.average(metric_value, axis=avg_axis, weights=mask, returned=True)
+        avg[sum==0] = null_mask_return_value
+        return avg
     return metric_m
 
-def sparse_categorical_accuracy_mask(classes, null_mask_return_value=1):
+def sparse_categorical_accuracy_mask(classes, null_mask_return_value=np.nan):
     return metric_mask(metric=sparse_categorical_accuracy, mask_fun = category_mask(classes), null_mask_return_value=null_mask_return_value)
 
 def mae(y_true, y_pred):

@@ -116,3 +116,22 @@ def evaluate_model(iterator, model, metrics, metric_names, xp_idx_in_path=2, pos
     df["XP"] = pd.Series(dsInfo[:,xp_idx_in_path])
     df["Position"] = pd.Series(dsInfo[:,position_idx_in_path])
     return df
+
+def displayProgressBar(max): # this progress bar is compatible with google colab
+    from IPython.display import HTML, display
+    def progress(value=0, max=max):
+        return HTML("""
+            <progress
+                value='{value}'
+                max='{max}',
+                style='width: 100%'
+            >
+                {value}
+            </progress>
+        """.format(value=value, max=max))
+    out = display(progress(), display_id=True)
+    currentProgress=[0]
+    def callback():
+        currentProgress[0]+=1
+        out.update(progress(currentProgress[0]))
+    return callback
