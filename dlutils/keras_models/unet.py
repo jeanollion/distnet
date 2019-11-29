@@ -40,7 +40,7 @@ def get_slice_channel_layer(channel, name=None):
     return Lambda(lambda x: x[:,:,:,channel:(channel+1)], name = (name if name else "get_channel")+"_"+str(channel))
 
 class UnetEncoder():
-    def __init__(self, n_down, n_filters, image_shape=None, double_n_filters=True, name="encoder"):
+    def __init__(self, n_down, n_filters, image_shape=None, last_conv_1x1=False, name="encoder"):
         if image_shape!=None and min(image_shape[0], image_shape[1])/2**n_down<1:
             raise ValueError("too many down convolutions. minimal dimension is {}, number of convlution is {} shape in minimal dimension would be {}".format(min(image_shape[0], image_shape[1]), n_down, min(image_shape[0], image_shape[1])/2**n_down))
         self.image_shape = image_shape
@@ -48,7 +48,7 @@ class UnetEncoder():
         self.layers=[]
         self.n_down = n_down
         self.n_filters=n_filters
-        self.double_n_filters=double_n_filters
+        self.last_conv_1x1=last_conv_1x1
         for layer_idx in range(n_down + 1): # +1 -> last feature layer
             self._make_layer(layer_idx)
 
@@ -68,7 +68,8 @@ class UnetEncoder():
         kernel_size = self._get_kernel_size(layer_idx)
         conv1L = Conv2D(filters, (kernel_size, kernel_size), padding='same', activation='relu', kernel_initializer = 'he_normal', name=self.name+str(layer_idx+1)+"_conv" if self.name else None)
         concatL=Concatenate(axis=3, name=self.name+str(layer_idx+1)+"_concat" if self.name else None)
-        residualL = Conv2D(filters, (kernel_size, kernel_size), padding='same', activation='relu', kernel_initializer = 'he_normal', name=self.name+str(layer_idx+1)+"_res" if self.name else None)
+        last_kernel_size = 1 if len(self.layers)==self.n_down and self.last_conv_1x1 else kernel_size
+        residualL = Conv2D(filters, (last_kernel_size, last_kernel_size), padding='same', activation='relu', kernel_initializer = 'he_normal', name=self.name+str(layer_idx+1)+"_res" if self.name else None)
         if len(self.layers)==self.n_down:
             self.layers.append([conv1L, concatL, residualL])
         else:
@@ -88,25 +89,22 @@ class UnetEncoder():
             return max_pool, residual
 
     def _get_kernel_size(self, layer_idx):
-        if not self.image_shape:
+        if self.image_shape is None:
             return 3
         min_dim = min(self.image_shape[0], self.image_shape[1])
         current_size = min_dim // 2**layer_idx
         return 3 if current_size>=3 else current_size
 
     def _get_n_filters(self, layer_idx):
-        if self.double_n_filters:
-            return self.n_filters * 2**layer_idx
-        else:
-            return self.n_filters
+        return self.n_filters * 2**layer_idx
 
 class UnetDecoder():
-    def __init__(self, n_up, n_filters, double_n_filters=True, n_1x1_conv=0, name="decoder"):
+    def __init__(self, n_up, n_filters, use_1x1_conv_after_concat=False, n_1x1_conv=0, name="decoder"):
         self.layers=[]
         self.name=name
         self.n_up = n_up
         self.n_filters = n_filters
-        self.double_n_filters=double_n_filters
+        self.use_1x1_conv_after_concat=use_1x1_conv_after_concat
         for layer_idx in range(n_up):
             self._make_layer(self._get_n_filters(layer_idx), layer_idx)
         self.last_convs = [Conv2D(n_filters, (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name = self.name+"_conv1x1_"+str(i+1) if self.name else None) for i in range(n_1x1_conv)]
@@ -116,7 +114,8 @@ class UnetDecoder():
         upsampleL = UpSampling2D(size=(2,2), name = self.name+str(layer_idx+1)+"_up" if self.name else None)
         upconvL = Conv2D(filters, kernel_initializer = 'he_normal', kernel_size=(2, 2), padding="same", name = self.name+str(layer_idx+1)+"_conv1" if self.name else None)
         concatL = Concatenate(axis=3, name = self.name+str(layer_idx+1)+"_concat" if self.name else None)
-        conv1L = Conv2D(filters, (3, 3), padding='same', activation='relu', kernel_initializer = 'he_normal', name = self.name+str(layer_idx+1)+"_conv2" if self.name else None)
+        k = 1 if self.use_1x1_conv_after_concat else 3
+        conv1L = Conv2D(filters, (k, k), padding='same', activation='relu', kernel_initializer = 'he_normal', name = self.name+str(layer_idx+1)+"_conv2" if self.name else None)
         conv2L = Conv2D(filters, (3, 3), padding='same', activation='relu', kernel_initializer = 'he_normal', name = self.name+str(layer_idx+1)+"_conv3" if self.name else None)
         self.layers.append([upsampleL, upconvL, concatL, conv1L, conv2L])
 
@@ -158,23 +157,20 @@ class UnetDecoder():
         return conv2
 
     def _get_n_filters(self, layer_idx):
-        if self.double_n_filters:
-            return self.n_filters * 2**(self.n_up - layer_idx - 1)
-        else:
-            return self.n_filters
+        return self.n_filters * 2**(self.n_up - layer_idx - 1)
 
 def concat_and_conv(inputs, n_filters, layer_name):
     concat = Concatenate(axis=3, name = layer_name+"_concat")(inputs)
     return Conv2D(n_filters, (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name = layer_name+"_conv1x1")(concat)
 
 
-def get_unet_model(image_shape, n_down, filters=64, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1, n_1x1_conv=0, double_n_filters=True, n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True):
+def get_unet_model(image_shape, n_down, filters=64, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1, n_1x1_conv=0, use_1x1conv_last_encoding_layer=False, use_1x1_conv_after_concat=False, n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True):
     n_output_channels = _ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = _ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = _ensure_multiplicity(n_inputs, n_input_channels)
 
-    encoders = [UnetEncoder(n_down, filters, image_shape, double_n_filters=double_n_filters, name="encoder"+str(i)+"_") for i in range(n_stack)]
-    decoders = [UnetDecoder(n_down, filters, n_1x1_conv=n_1x1_conv, double_n_filters=double_n_filters, name="decoder"+str(i)+"_") for i in range(n_stack)]
+    encoders = [UnetEncoder(n_down, filters, image_shape, last_conv_1x1=use_1x1conv_last_encoding_layers, name="encoder"+str(i)+"_") for i in range(n_stack)]
+    decoders = [UnetDecoder(n_down, filters, n_1x1_conv=n_1x1_conv, use_1x1_conv_after_concat=use_1x1_conv_after_concat, name="decoder"+str(i)+"_") for i in range(n_stack)]
 
     if n_inputs>1:
         input = [Input(shape = image_shape+(n_input_channels[i],), name="input"+str(i)) for i in range(n_inputs)]
