@@ -198,6 +198,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 	def _get_batch_by_channel(self, index_array, perform_augmentation, input_only=False):
 		if self.h5py_file is None: # for concurency issues: file is open lazyly by each worker
 			self._open_h5py_file()
+		index_array = np.copy(index_array) # so that main index array is not modified
 		index_ds = self._get_ds_idx(index_array) # modifies index_array
 
 		batch_by_channel = dict()
@@ -332,6 +333,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		self.shuffle=False
 		perform_aug = self.perform_data_augmentation
 		self.perform_data_augmentation=False
+		self.reset()
 		self._set_index_array() # if shuffle was true
 
 		if np.any(self.index_array[1:] < self.index_array[:-1]):
