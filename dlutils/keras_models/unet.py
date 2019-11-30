@@ -169,7 +169,7 @@ def get_unet_model(image_shape, n_down, filters=64, n_outputs=1, n_output_channe
     out_activations = _ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = _ensure_multiplicity(n_inputs, n_input_channels)
 
-    encoders = [UnetEncoder(n_down, filters, image_shape, last_conv_1x1=use_1x1conv_last_encoding_layers, name="encoder"+str(i)+"_") for i in range(n_stack)]
+    encoders = [UnetEncoder(n_down, filters, image_shape, last_conv_1x1=use_1x1conv_last_encoding_layer, name="encoder"+str(i)+"_") for i in range(n_stack)]
     decoders = [UnetDecoder(n_down, filters, n_1x1_conv=n_1x1_conv, use_1x1_conv_after_concat=use_1x1_conv_after_concat, name="decoder"+str(i)+"_") for i in range(n_stack)]
 
     if n_inputs>1:
