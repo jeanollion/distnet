@@ -69,7 +69,18 @@ def masked_loss(original_loss_func, mask):
         return loss
     return loss_func
 
-def weighted_loss(original_loss_func, weights_list, axis=-1, sparse=True):
+def ssim_loss(y_true, y_pred):
+  SSIM = tf.image.ssim(y_true, y_pred, max_val=256)
+  return 1 - (1 + SSIM ) /2
+
+def sum_losses(losses, weights):
+    if len(losses)!=len(weights):
+        raise ValueError("Weights array should be of same length as loss array")
+    def loss_func(y_true, y_pred):
+        loss_values = [loss(y_true, y_pred) * w for loss, w in zip(losses, weights)]
+        return sum(loss_values)
+
+def weighted_loss_by_category(original_loss_func, weights_list, axis=-1, sparse=True):
     def loss_func(true, pred):
         if sparse:
             class_selectors = K.squeeze(true, axis=axis)
