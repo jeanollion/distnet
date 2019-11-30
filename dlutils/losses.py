@@ -1,6 +1,7 @@
 import keras.backend as K
 import tensorflow as tf
 from keras import losses
+import numpy as np
 
 def categorical_focal_loss(gamma=2., alpha=.25, sparse=True):
     """
@@ -43,12 +44,30 @@ def categorical_focal_loss(gamma=2., alpha=.25, sparse=True):
             cross_entropy = losses.categorical_crossentropy(y_true, y_pred)
         # Calculate Focal Loss
         loss = alpha * K.pow(1 - y_pred, gamma) * cross_entropy
-        
+
         return loss
         # Sum the losses in mini_batch
         #return K.sum(loss, axis=1)
 
     return categorical_focal_loss_fixed
+
+def mother_machine_mask(shape=(256, 32), mask_size=40, lower_end_only=True):
+    mask = np.ones(shape=(1,)+shape, dtype=np.float) #+(1,)
+    val = lambda y : ((shape[0] -1 - y )/mask_size)**3
+    for y in range(shape[0]-mask_size, shape[0]):
+        mask[:,y]=val(y)
+    if not lower_end_only:
+        for y in range(0, mask_size):
+            mask[:,y]=val(shape[0]-1-y)
+    return mask
+
+def masked_loss(original_loss_func, mask):
+    mask_tf = tf.convert_to_tensor(mask)
+    def loss_func(true, pred):
+        loss = original_loss_func(true, pred)
+        loss = loss * mask #broadcasting to batch size , y, x , channels
+        return loss
+    return loss_func
 
 def weighted_loss(original_loss_func, weights_list, axis=-1, sparse=True):
     def loss_func(true, pred):
