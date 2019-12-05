@@ -66,8 +66,11 @@ class UnetEncoder():
             conv1 = layers[1]([conv1]+layers_to_concatenate)
         residual = layers[2](conv1)
         if layer_idx==self.n_down: # last layer : no contraction
-            output = layers[3]([conv1, residual])
-            return layers[4](output)
+            if self.use_self_attention:
+                output = layers[3]([conv1, residual])
+                return layers[4](output)
+            else:
+                return residual
         else:
             max_pool = layers[3](residual)
             return max_pool, residual
