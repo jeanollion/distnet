@@ -66,11 +66,11 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		self.ds_off=np.insert(self.ds_len[:-1], 0, 0)
 
 		# check that all datasets have same image shape within each channel
-		self.shape = [ds_l[0].shape[1:] for ds_l in self.ds_array]
+		self.channel_image_shapes = [ds_l[0].shape[1:] for ds_l in self.ds_array]
 		for c, ds_l in enumerate(self.ds_array):
 			for ds_idx, ds in enumerate(ds_l):
-				if ds.shape[1:] != self.shape[c]:
-					raise ValueError('Dataset {dsi} with path {dspath} from channel {chan}({chank}) has shape {dsshape} that differs from first dataset with path {ds1path} with shape {ds1shape}'.format(dsi=ds_idx, dspath=self._get_dataset_path(c, ds_idx), chan=c, chank=self.channel_keywords[c], dsshape=ds.shape[1:], ds1path=self._get_dataset_path(c, 0), ds1shape=self.shape[c] ))
+				if ds.shape[1:] != self.channel_image_shapes[c]:
+					raise ValueError('Dataset {dsi} with path {dspath} from channel {chan}({chank}) has shape {dsshape} that differs from first dataset with path {ds1path} with shape {ds1shape}'.format(dsi=ds_idx, dspath=self._get_dataset_path(c, ds_idx), chan=c, chank=self.channel_keywords[c], dsshape=ds.shape[1:], ds1path=self._get_dataset_path(c, 0), ds1shape=self.channel_image_shapes[c] ))
 
 		# labels
 		self.labels = get_datasets_by_path(self.h5py_file, [path.replace(self.channel_keywords[0], '/labels') for path in self.paths])
@@ -272,7 +272,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		return img
 
 	def _read_image_batch(self, index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array):
-		im_shape = self.shape[chan_idx]
+		im_shape = self.channel_image_shapes[chan_idx]
 		channel = () if len(im_shape)==3 else (1,)
 		# read all images
 		images = [self._read_image(chan_idx, ds_idx, im_idx) for i, (ds_idx, im_idx) in enumerate(zip(index_ds, index_array))]
@@ -293,7 +293,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 	def _read_image(self, chan_idx, ds_idx, im_idx):
 		ds = self.ds_array[chan_idx][ds_idx]
 		im = ds[im_idx]
-		if len(self.shape[chan_idx])==2:
+		if len(self.channel_image_shapes[chan_idx])==2:
 			im = np.expand_dims(im, -1)
 		im = im.astype(self.dtype)
 		# apply dataset-wise scaling if information is present in attributes
@@ -326,7 +326,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		# todo: modify so that losses / accuracy are computed
 		of = h5py.File(output_file_path, 'a')
 		if output_shape is None:
-			output_shape = self.shape[0]
+			output_shape = self.channel_image_shapes[0]
 		batch_index = self.batch_index
 		self.batch_index=0
 		shuffle = self.shuffle

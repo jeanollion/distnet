@@ -161,7 +161,7 @@ class ImageDataGeneratorMM(ImageDataGenerator):
             space_y = ndi.find_objects(space_y)
             space_y = [slice_obj[0] for slice_obj in space_y] # only first dim
             limit = mask_img.shape[0]
-            space_y = [slice_obj for slice_obj in space_y if (slice_obj.stop - slice_obj.start)>4 and (self.closed_end or slice_obj.start>0) and slice_obj.stop<limit] # keep only slices with length > 4 and not the space close to the open ends
+            space_y = [slice_obj for slice_obj in space_y if (slice_obj.stop - slice_obj.start)>4 and slice_obj.stop>10 and (self.closed_end or slice_obj.start>0) and slice_obj.stop<limit] # keep only slices with length > 4 and not the space close to the open ends
             if len(space_y)>0:
                 space_y = [(slice_obj.stop + slice_obj.start)//2 for slice_obj in space_y]
                 y = choice(space_y)
