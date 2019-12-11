@@ -1,9 +1,10 @@
-from keras.layers import Layer, Dense, Reshape, Embedding, Concatenate, Conv2D
-from keras.models import Model
 import tensorflow as tf
+from tensorflow.keras.layers import Layer, Dense, Reshape, Embedding, Concatenate, Conv2D
+from tensorflow.keras.models import Model
+import numpy as np
 
 class SelfAttention(Model):
-    def __init__(self, d_model, max_spatial_dim, name="self_attention"):
+    def __init__(self, d_model, spatial_dims, positional_embedding=True, name="self_attention"):
         '''
             d_model : number of output channels
             max_spatial_dim : max number of spatial dimensions of input tensor (x * y). if > 0 enables positional encoding
@@ -11,13 +12,14 @@ class SelfAttention(Model):
         '''
         super(SelfAttention, self).__init__(name=name)
         self.d_model = d_model
-
+        self.spatial_dims=spatial_dims
+        self.spatial_dim = np.prod(spatial_dims)
         self.wq = Dense(d_model)
         self.wk = Dense(d_model)
         self.wv = Dense(d_model)
 
-        if max_spatial_dim>0:
-            self.pos_embedding = Embedding(max_spatial_dim, d_model)
+        if positional_embedding:
+            self.pos_embedding = Embedding(self.spatial_dim, d_model)
 
     def call(self, x):
         '''
@@ -25,14 +27,14 @@ class SelfAttention(Model):
         '''
         shape = tf.shape(x)
         batch_size = shape[0]
-        spatial_dims = shape[1:-1]
-        spatial_dim = tf.reduce_prod(spatial_dims)
+        #spatial_dims = shape[1:-1]
+        #spatial_dim = tf.reduce_prod(spatial_dims)
         depth_dim = shape[3]
 
         if self.pos_embedding is not None:
-            x_index = tf.range(spatial_dim, dtype=tf.int32)
+            x_index = tf.range(self.spatial_dim, dtype=tf.int32)
             pos_emb = self.pos_embedding(x_index) # (spa_dim, d_model)
-            pos_emb = tf.reshape(pos_emb, (spatial_dims[0], spatial_dims[1], self.d_model)) #for broadcasting purpose
+            pos_emb = tf.reshape(pos_emb, (self.spatial_dims[0], self.spatial_dims[1], self.d_model)) #for broadcasting purpose
             x = x + pos_emb # broadcast
 
         q = self.wq(x)  # (batch_size, *spa_dims, d_model)
@@ -46,7 +48,7 @@ class SelfAttention(Model):
         # scaled_attention.shape == (batch_size, spa_dims, depth)
         # attention_weights.shape == (batch_size, spa_dims, spa_dims)
         scaled_attention, attention_weights = scaled_dot_product_attention(q, k, v)
-        output = tf.reshape(scaled_attention, (batch_size, spatial_dims[0], spatial_dims[1], self.d_model))
+        output = tf.reshape(scaled_attention, (batch_size, self.spatial_dims[0], self.spatial_dims[1], self.d_model))
         return output
 
     def compute_output_shape(self, input_shape):

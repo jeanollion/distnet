@@ -1,4 +1,5 @@
-from keras_preprocessing.image import Iterator
+#from keras_preprocessing.image import Iterator
+from tensorflow.keras.preprocessing.image import Iterator
 import numpy as np
 
 class IndexArrayIterator(Iterator):

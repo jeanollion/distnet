@@ -1,10 +1,30 @@
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
+from scipy.ndimage.morphology import binary_erosion
+from scipy.ndimage import find_objects
 import random
 from random import uniform, random, randint, getrandbits
 from scipy import interpolate
 import copy
 
+def binary_erode_labelwise(label_img):
+    '''
+        in-place erosion of square 8-connectivity, label by label, with border value = 1
+    '''
+    # todo: set structure as argument, but adapt region dilatation to this parameter
+    regDilSize = 1
+    regions = find_objects(label_img)
+    shape = label_img.shape
+    for val, region in enumerate(regions, start=1):
+        if region is not None:
+            # extend region in order to avoid border effect when set border_value = 1
+            region = list(region)
+            for i, s in enumerate(region):
+                region[i] = slice(max(0, s.start-regDilSize), min(s.stop+regDilSize, shape[i]), None)
+            region = tuple(region)
+            subregion = label_img[region]
+            eroded = binary_erosion(subregion == val, border_value = 1)
+            subregion[(subregion == val) *np.logical_not(eroded)] = 0 # erase eroded region only within object
 
 def sometimes(func, prob=0.5):
     return lambda im:func(im) if random()<prob else im

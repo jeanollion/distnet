@@ -94,7 +94,7 @@ class H5dyIterator(H5TrackingIterator):
 		if len(labels_to_erase)>0:
 			# erase in all mask image then in label image
 			# dilate image in case labels have been eroded
-			dilated = maximum_filter(labelImage, 1)
+			dilated = maximum_filter(labelImage, 5) # size >3 in case of zoom
 			dilated[labelImage != 0] = labelImage[labelImage != 0] # make sure other labels are not affected by dilatation
 			slice = dilated == labels_to_erase
 			for mask_chan_idx, c in zip(channel_idxs, channel_idxs_chan):

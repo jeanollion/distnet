@@ -1,12 +1,11 @@
-#import numpy as np
-from keras.models import Model
-from keras.layers import Dense, Conv2D, Input, MaxPool2D, UpSampling2D, Concatenate, Conv2DTranspose, Dropout, Lambda
-#import tensorflow as tf
-from keras.optimizers import Adam
-from keras import backend as K
-from keras.losses import mean_squared_error
+import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Conv2D, Input, MaxPool2D, UpSampling2D, Concatenate, Conv2DTranspose, Dropout, Lambda
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras import backend as K
+from tensorflow.keras.losses import mean_squared_error
 import os
-from keras.preprocessing.image import array_to_img, img_to_array, load_img
+from tensorflow.keras.preprocessing.image import array_to_img, img_to_array, load_img
 from .self_attention import SelfAttention
 
 def get_slice_channel_layer(channel, name=None): # tensorflow function !!
@@ -49,7 +48,7 @@ class UnetEncoder():
         if len(self.layers)==self.n_down: # last layer
             if self.use_self_attention:
                 sx, sy = self._get_image_shape(layer_idx)
-                selfAttentionL = SelfAttention(filters, sx * sy, name=self.name+str(layer_idx+1)+"_self_attention" if self.name else None)
+                selfAttentionL = SelfAttention(filters, [sx,sy], name=self.name+str(layer_idx+1)+"_self_attention" if self.name else None)
                 sa_concatL=Concatenate(axis=3, name=self.name+str(layer_idx+1)+"self_attention_concat" if self.name else None)
                 sa_conv1x1L = Conv2D(filters, (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name=self.name+str(layer_idx+1)+"_self_attention_conv1x1" if self.name else None)
                 self.layers.append([conv1L, concatL, selfAttentionL, sa_concatL, sa_conv1x1L])

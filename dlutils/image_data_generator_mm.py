@@ -1,4 +1,5 @@
 from keras_preprocessing.image import ImageDataGenerator
+#from tensorflow.keras.preprocessing.image import ImageDataGenerator # this version doesn't have interpolation_order
 import numpy as np
 from math import tan, atan, pi, copysign
 import dlutils.pre_processing_utils as pp
@@ -155,12 +156,12 @@ class ImageDataGeneratorMM(ImageDataGenerator):
         forbid_transformations_if_object_touching_borders(params, mask_img, self.closed_end)
         if self.bacteria_swim_distance>1:
             # get y space between bacteria
-            space_y = np.invert(np.any(mask_img, 1)).astype(np.int)
+            space_y = np.invert(np.any(mask_img, 1)).astype(np.int) # 1 where no label along y axis:
             space_y, n_lab = ndi.label(space_y)
             space_y = ndi.find_objects(space_y)
             space_y = [slice_obj[0] for slice_obj in space_y] # only first dim
             limit = mask_img.shape[0]
-            space_y = [slice_obj for slice_obj in space_y if slice_obj.stop - slice_obj.start>4 and slice_obj.start>0 and slice_obj.stop<limit] # keep only slices with length > 4 and not upper / lower space before / after bacteria
+            space_y = [slice_obj for slice_obj in space_y if (slice_obj.stop - slice_obj.start)>4 and (self.closed_end or slice_obj.start>0) and slice_obj.stop<limit] # keep only slices with length > 4 and not the space close to the open ends
             if len(space_y)>0:
                 space_y = [(slice_obj.stop + slice_obj.start)//2 for slice_obj in space_y]
                 y = choice(space_y)

@@ -1,6 +1,6 @@
-import keras.backend as K
 import tensorflow as tf
-from keras import losses
+import tensorflow.keras.backend as K
+from tensorflow.keras import losses
 import numpy as np
 
 def categorical_focal_loss(gamma=2., alpha=.25, sparse=True):
