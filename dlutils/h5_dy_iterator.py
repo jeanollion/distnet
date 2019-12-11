@@ -1,6 +1,6 @@
 from dlutils import H5TrackingIterator
 import numpy as np
-from scipy.ndimage import center_of_mass, find_objects
+from scipy.ndimage import center_of_mass, find_objects, maximum_filter
 from scipy.ndimage.measurements import mean
 from math import copysign
 from dlutils.image_data_generator_mm import has_object_at_y_borders
@@ -12,6 +12,7 @@ class H5dyIterator(H5TrackingIterator):
 		input_channels=[0],
 		output_channels = [1, 2, 3],
 		channels_prev=[True, True, False, True],
+		channels_next=[False, False, False, False],
 		return_categories = False,
 		mask_channels=[1, 2, 3],
 		output_multiplicity = 1,
@@ -27,68 +28,80 @@ class H5dyIterator(H5TrackingIterator):
 		dtype='float32'):
 		if len(channel_keywords)<3:
 			raise ValueError('keyword should have at least 3 elements in this order: grayscale input images, object labels, object previous labels')
-		if 1 not in output_channels:
-			raise ValueError("labels must be returned as output")
-		if 2 not in output_channels:
-			raise ValueError("prev labels must be returned as output")
-		if not channels_prev[1]:
-			raise ValueError("previous timepoint of labels must be returned as output")
-		if channels_prev[2]:
-			raise ValueError("previous timepoint of prev labels must not be returned as output")
+		assert 1 in output_channels
+		assert 2 in output_channels
+		assert channels_prev[1]
+		assert not channels_prev[2]
+		assert channels_next[1] == channels_next[2]
 		self.return_categories=return_categories
 		self.closed_end=closed_end
 		self.erase_cut_cell_length=erase_cut_cell_length
-		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, channels_prev, [False]*len(channel_keywords), mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, channels_prev, channels_next, mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
 		# dy is computed and returned instead of labels & prevLabels
 		labelIms = batch_by_channel[1]
 		prevlabelIms = batch_by_channel[2]
-		no_neigh_key = "no_prev"
+		return_next = self.channels_next[1]
 
 		# remove small objects
 		mask_to_erase_cur = [chan_idx for chan_idx in self.mask_channels if chan_idx!=1 and chan_idx in batch_by_channel]
 		mask_to_erase_chan_cur = [1 if self.channels_prev[chan_idx] else 0 for chan_idx in mask_to_erase_cur]
 		mask_to_erase_prev = [chan_idx for chan_idx in mask_to_erase_cur if self.channels_prev[chan_idx]]
+		mask_to_erase_chan_prev = [0] * len(mask_to_erase_prev)
+		if return_next:
+			mask_to_erase_next = [chan_idx for chan_idx in mask_to_erase_cur if self.channels_next[chan_idx]]
+			mask_to_erase_chan_next = [2 if self.channels_prev[chan_idx] else 1 for chan_idx in mask_to_erase_next]
+
 		for i in range(labelIms.shape[0]):
 			# cur timepoint
-			labels_to_erase = get_small_objects_to_erase(labelIms[i,...,1], self.erase_cut_cell_length, self.closed_end)
-			if len(labels_to_erase)>0:
-				# erase in all mask image then in label image
-				slice = labelIms[i,...,1] == labels_to_erase
-				for mask_chan_idx, c in zip(mask_to_erase_cur, mask_to_erase_chan_cur):
-					batch_by_channel[mask_chan_idx][i,...,c][slice]=0
-				labelIms[i,...,1][slice] = 0
+			self._erase_small_objects_at_border(labelIms[i,...,1], i, mask_to_erase_cur, mask_to_erase_chan_cur, batch_by_channel)
 			# prev timepoint
-			labels_to_erase = get_small_objects_to_erase(labelIms[i,...,0], self.erase_cut_cell_length, self.closed_end)
-			if len(labels_to_erase)>0:
-				slice = labelIms[i,...,0]==labels_to_erase
-				for mask_chan_idx in mask_to_erase_prev:
-					batch_by_channel[mask_chan_idx][i,...,0][slice]=0
-				labelIms[i,...,0][slice] = 0
+			self._erase_small_objects_at_border(labelIms[i,...,0], i, mask_to_erase_prev, mask_to_erase_chan_prev, batch_by_channel)
+			if return_next:
+				self._erase_small_objects_at_border(labelIms[i,...,2], i, mask_to_erase_next, mask_to_erase_chan_next, batch_by_channel)
 
-		dyIm = np.zeros(labelIms.shape[:-1]+(1,), dtype=self.dtype)
+		dyIm = np.zeros(labelIms.shape[:-1]+(2 if return_next else 1,), dtype=self.dtype)
 		if self.return_categories:
 			categories = np.zeros(labelIms.shape[:-1]+(1,), dtype=self.dtype)
+			if return_next:
+				categories_next = np.zeros(labelIms.shape[:-1]+(1,), dtype=self.dtype)
 		for i in range(labelIms.shape[0]):
-			if aug_param_array is not None and (aug_param_array[i][ref_chan_idx].get(no_neigh_key, False)):
+			if aug_param_array is not None and (aug_param_array[i][ref_chan_idx].get("no_prev", False)):
 				prevLabelIm = None
 			else:
 				prevLabelIm = prevlabelIms[i,...,0]
 			_compute_dy(labelIms[i,...,1], labelIms[i,...,0], prevLabelIm, dyIm[i,...,0], categories[i,...,0] if self.return_categories else None)
-		other_output_channels = [chan_idx for chan_idx in self.output_channels if chan_idx!=1 and chan_idx!=2]
-		if len(other_output_channels)>0:
-			all_channels = [batch_by_channel[chan_idx] for chan_idx in other_output_channels]
-			all_channels.insert(0, dyIm)
-			if self.return_categories:
-				all_channels.insert(1, categories)
-			return all_channels
-		elif self.return_categories:
-			return [dyIm, categories]
-		else:
-			return dyIm
+			if return_next:
+				if aug_param_array is not None and (aug_param_array[i][ref_chan_idx].get("no_next", False)):
+					prevLabelIm = None
+				else:
+					prevLabelIm = prevlabelIms[i,...,1]
+				_compute_dy(labelIms[i,...,2], labelIms[i,...,1], prevLabelIm, dyIm[i,...,1], categories_next[i,...,0] if self.return_categories else None)
 
-def get_small_objects_to_erase(labelIm, min_length, closed_end):
+		other_output_channels = [chan_idx for chan_idx in self.output_channels if chan_idx!=1 and chan_idx!=2]
+
+		all_channels = [batch_by_channel[chan_idx] for chan_idx in other_output_channels]
+		all_channels.insert(0, dyIm)
+		if self.return_categories:
+			all_channels.insert(1, categories)
+			if return_next:
+				all_channels.insert(2, categories_next)
+		return all_channels
+
+	def _erase_small_objects_at_border(self, labelImage, batch_idx, channel_idxs, channel_idxs_chan, batch_by_channel):
+		labels_to_erase = _get_small_objects_at_boder_to_erase(labelImage, self.erase_cut_cell_length, self.closed_end)
+		if len(labels_to_erase)>0:
+			# erase in all mask image then in label image
+			# dilate image in case labels have been eroded
+			dilated = maximum_filter(labelImage, 1)
+			dilated[labelImage != 0] = labelImage[labelImage != 0] # make sure other labels are not affected by dilatation
+			slice = dilated == labels_to_erase
+			for mask_chan_idx, c in zip(channel_idxs, channel_idxs_chan):
+				batch_by_channel[mask_chan_idx][batch_idx,...,c][slice]=0
+			labelImage[slice] = 0
+
+def _get_small_objects_at_boder_to_erase(labelIm, min_length, closed_end):
 	has_object_down, has_object_up = has_object_at_y_borders(labelIm)
 	res=set()
 	if closed_end: # only consider lower part

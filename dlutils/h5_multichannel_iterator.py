@@ -448,7 +448,7 @@ class H5MultiChannelIterator(IndexArrayIterator):
 		values[:,1] = ds_idx
 		path = [self.paths[i] for i in ds_idx]
 		labels = [self.labels[i][j] for i,j in zip(ds_idx, idx)]
-		indices = [str(int(s[1]))+"-"+s[0].split('-')[1] for s in [l.split("_f") for l in labels]]
+		indices = [str(int(s[1]))+"-"+s[0].split('-')[1] for s in [l.split("_f") for l in labels]] #caveat: s[0].split('-')[1] is not the parent idx but the parentTrackHead idx, same in most case but ...
 		return values, path, labels, indices
 # class util methods
 def copy_geom_tranform_parameters(aug_param_source, aug_param_dest):

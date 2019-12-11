@@ -57,7 +57,7 @@ class H5TrackingIterator(H5MultiChannelIterator):
 		if "aug_params_prev" in aug_params and self.channels_prev[chan_idx]:
 			img[...,0:1] = super()._apply_augmentation(img[...,0:1], chan_idx, aug_params.get("aug_params_prev"))
 		if "aug_params_next" in aug_params and self.channels_next[chan_idx]:
-			img[...,-1:0] = super()._apply_augmentation(img[...,-1:0], chan_idx, aug_params.get("aug_params_next"))
+			img[...,-1:] = super()._apply_augmentation(img[...,-1:], chan_idx, aug_params.get("aug_params_next"))
 		cur_chan_idx = 1 if self.channels_prev[chan_idx] else 0
 		img[...,cur_chan_idx:(cur_chan_idx+1)] = super()._apply_augmentation(img[...,cur_chan_idx:(cur_chan_idx+1)], chan_idx, aug_params)
 		return img
@@ -86,7 +86,7 @@ class H5TrackingIterator(H5MultiChannelIterator):
 				pass
 			params["aug_params_prev"] = params_prev
 		if self.channels_next[chan_idx]:
-			params_next = super()._get_data_augmentation_parameters(chan_idx, ref_chan_idx, batch[...,-1:0], idx, index_ds, index_array)
+			params_next = super()._get_data_augmentation_parameters(chan_idx, ref_chan_idx, batch[...,-1:], idx, index_ds, index_array)
 			self._transfer_illumination_aug_param(params, params_next)
 			self._transfer_geom_aug_param_neighbor(params, params_next)
 			try:
