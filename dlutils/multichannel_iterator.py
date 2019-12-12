@@ -10,7 +10,7 @@ import time
 import copy
 from math import copysign
 
-class H5MultiChannelIterator(IndexArrayIterator):
+class MultiChannelIterator(IndexArrayIterator):
 	def __init__(self,
 				h5py_file_path,
 				channel_keywords=['/raw'],

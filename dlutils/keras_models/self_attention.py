@@ -4,7 +4,7 @@ from tensorflow.keras.models import Model
 import numpy as np
 
 class SelfAttention(Model):
-    def __init__(self, d_model, spatial_dims, positional_embedding=True, name="self_attention"):
+    def __init__(self, d_model, spatial_dims, positional_encoding=True, name="self_attention"):
         '''
             d_model : number of output channels
             max_spatial_dim : max number of spatial dimensions of input tensor (x * y). if > 0 enables positional encoding
@@ -18,7 +18,7 @@ class SelfAttention(Model):
         self.wk = Dense(d_model)
         self.wv = Dense(d_model)
 
-        if positional_embedding:
+        if positional_encoding:
             self.pos_embedding = Embedding(self.spatial_dim, d_model)
 
     def call(self, x):

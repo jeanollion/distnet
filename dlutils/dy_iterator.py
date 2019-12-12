@@ -1,11 +1,11 @@
-from dlutils import H5TrackingIterator
+from dlutils import TrackingIterator
 import numpy as np
 from scipy.ndimage import center_of_mass, find_objects, maximum_filter
 from scipy.ndimage.measurements import mean
 from math import copysign
 from dlutils.image_data_generator_mm import has_object_at_y_borders
 
-class H5dyIterator(H5TrackingIterator):
+class DyIterator(TrackingIterator):
 	def __init__(self,
 		h5py_file_path,
 		channel_keywords=['/raw', '/regionLabels', '/prevRegionLabels', '/edm'], # channel @1 must be label & @2 previous label

@@ -1,12 +1,12 @@
 import numpy as np
-from dlutils import H5MultiChannelIterator
+from dlutils import MultiChannelIterator
 from .utils import get_datasets_by_path
 from random import random
 from sklearn.model_selection import train_test_split
-from .h5_multichannel_iterator import copy_geom_tranform_parameters
+from .multichannel_iterator import copy_geom_tranform_parameters
 from dlutils.image_data_generator_mm import transfer_illumination_aug_parameters
 
-class H5TrackingIterator(H5MultiChannelIterator):
+class TrackingIterator(MultiChannelIterator):
 	def __init__(self,
 				h5py_file_path,
 				channel_keywords=['/raw', '/regionLabels', '/prevRegionLabels', '/edm'],
