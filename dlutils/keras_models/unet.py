@@ -179,14 +179,14 @@ def concat_and_conv(inputs, n_filters, layer_name):
     concat = Concatenate(axis=3, name = layer_name+"_concat")(inputs)
     return Conv2D(n_filters, (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name = layer_name+"_conv1x1")(concat)
 
-def get_unet_model(image_shape, n_down, filters=64, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=False, n_inputs=1, n_input_channels=1, use_self_attention=False, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True):
+def get_unet_model(image_shape, n_contractions, filters=64, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=False, n_inputs=1, n_input_channels=1, use_self_attention=False, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True):
     n_output_channels = _ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = _ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = _ensure_multiplicity(n_inputs, n_input_channels)
     filters = _ensure_multiplicity(2, filters)
     max_filters =  _ensure_multiplicity(2, max_filters)
-    encoders = [UnetEncoder(n_down, filters[0], max_filters[0], image_shape, anisotropic_conv, use_self_attention, name="encoder"+str(i)+"_") for i in range(n_stack)]
-    decoders = [UnetDecoder(n_down, filters[1], max_filters[1], image_shape, anisotropic_conv, n_last_1x1_conv=n_1x1_conv_after_decoder, use_1x1_conv_after_concat=use_1x1_conv_after_concat, name="decoder"+str(i)+"_") for i in range(n_stack)]
+    encoders = [UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, use_self_attention, name="encoder"+str(i)+"_") for i in range(n_stack)]
+    decoders = [UnetDecoder(n_contractions, filters[1], max_filters[1], image_shape, anisotropic_conv, n_last_1x1_conv=n_1x1_conv_after_decoder, use_1x1_conv_after_concat=use_1x1_conv_after_concat, name="decoder"+str(i)+"_") for i in range(n_stack)]
 
     if n_inputs>1:
         input = [Input(shape = image_shape+(n_input_channels[i],), name="input"+str(i)) for i in range(n_inputs)]
