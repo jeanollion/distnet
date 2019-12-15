@@ -25,7 +25,7 @@ class UnetIterator(MultiChannelIterator):
         super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed, dtype)
 
     def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
-        # just merge labels and weight
         labels = batch_by_channel[1]
+        labels[labels>0] = 1 # transform to binary mask
         weights = batch_by_channel[2]
         return np.concatenate([labels, weights], axis=-1)

@@ -15,7 +15,7 @@ class DyIterator(TrackingIterator):
 		channels_next=[False, False, False, False],
 		return_categories = False,
 		mask_channels=[1, 2, 3],
-		dy_weightmap_channel = None,
+		weightmap_channel = None,
 		output_multiplicity = 1,
 		closed_end = True,
 		erase_cut_cell_length = 30,
@@ -34,15 +34,15 @@ class DyIterator(TrackingIterator):
 		assert channels_prev[1]
 		assert not channels_prev[2]
 		assert channels_next[1] == channels_next[2]
-		if dy_weightmap_channel is not None:
-			assert dy_weightmap_channel>=0 and dy_weightmap_channel<len(channel_keywords), "invalid weight map channel"
-			assert dy_weightmap_channel in output_channels, "weigh map should be returned"
-			assert not channels_prev[dy_weightmap_channel], "previous frame for weight map must not be returned"
-			assert channels_next[dy_weightmap_channel] == channels_next[2], "next frame for weight map must be returned if dy next is returned"
+		if weightmap_channel is not None:
+			assert weightmap_channel>=0 and weightmap_channel<len(channel_keywords), "invalid weight map channel"
+			assert weightmap_channel in output_channels, "weigh map should be returned"
+			assert not channels_prev[weightmap_channel], "previous frame for weight map must not be returned"
+			assert channels_next[weightmap_channel] == channels_next[2], "next frame for weight map must be returned if dy next is returned"
 		self.return_categories=return_categories
 		self.closed_end=closed_end
 		self.erase_cut_cell_length=erase_cut_cell_length
-		self.dy_weightmap_channel = dy_weightmap_channel
+		self.weightmap_channel = weightmap_channel
 		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, channels_prev, channels_next, mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
@@ -86,12 +86,16 @@ class DyIterator(TrackingIterator):
 					prevLabelIm = prevlabelIms[i,...,1]
 				_compute_dy(labelIms[i,...,2], labelIms[i,...,1], prevLabelIm, dyIm[i,...,1], categories_next[i,...,0] if self.return_categories else None)
 
-		if self.dy_weightmap_channel is not None:
-			wm = batch_by_channel[self.dy_weightmap_channel]
+		if self.weightmap_channel is not None:
+			wm = batch_by_channel[self.weightmap_channel]
 			dyIm = np.concatenate([dyIm, wm], -1)
-			# concatenate dyIm with weight map
-
-		other_output_channels = [chan_idx for chan_idx in self.output_channels if chan_idx!=1 and chan_idx!=2 and chan_idx!=self.dy_weightmap_channel]
+			if self.return_categories:
+				if return_next:
+					categories = np.concatenate([categories, wm[...,:1]], -1)
+					categories_next = np.concatenate([categories_next, wm[...,1:]], -1)
+				else:
+					categories = np.concatenate([categories, wm], -1)
+		other_output_channels = [chan_idx for chan_idx in self.output_channels if chan_idx!=1 and chan_idx!=2 and chan_idx!=self.weightmap_channel]
 
 		all_channels = [batch_by_channel[chan_idx] for chan_idx in other_output_channels]
 		all_channels.insert(0, dyIm)
