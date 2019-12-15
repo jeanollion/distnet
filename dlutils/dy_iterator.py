@@ -15,6 +15,7 @@ class DyIterator(TrackingIterator):
 		channels_next=[False, False, False, False],
 		return_categories = False,
 		mask_channels=[1, 2, 3],
+		dy_weightmap_channel = None,
 		output_multiplicity = 1,
 		closed_end = True,
 		erase_cut_cell_length = 30,
@@ -33,9 +34,15 @@ class DyIterator(TrackingIterator):
 		assert channels_prev[1]
 		assert not channels_prev[2]
 		assert channels_next[1] == channels_next[2]
+		if dy_weightmap_channel is not None:
+			assert dy_weightmap_channel>=0 and dy_weightmap_channel<len(channel_keywords), "invalid weight map channel"
+			assert dy_weightmap_channel in output_channels, "weigh map should be returned"
+			assert not channels_prev[dy_weightmap_channel], "previous frame for weight map must not be returned"
+			assert channels_next[dy_weightmap_channel] == channels_next[2], "next frame for weight map must be returned if dy next is returned"
 		self.return_categories=return_categories
 		self.closed_end=closed_end
 		self.erase_cut_cell_length=erase_cut_cell_length
+		self.dy_weightmap_channel = dy_weightmap_channel
 		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, channels_prev, channels_next, mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
@@ -79,7 +86,12 @@ class DyIterator(TrackingIterator):
 					prevLabelIm = prevlabelIms[i,...,1]
 				_compute_dy(labelIms[i,...,2], labelIms[i,...,1], prevLabelIm, dyIm[i,...,1], categories_next[i,...,0] if self.return_categories else None)
 
-		other_output_channels = [chan_idx for chan_idx in self.output_channels if chan_idx!=1 and chan_idx!=2]
+		if self.dy_weightmap_channel is not None:
+			wm = batch_by_channel[self.dy_weightmap_channel]
+			dyIm = np.concatenate([dyIm, wm], -1)
+			# concatenate dyIm with weight map
+
+		other_output_channels = [chan_idx for chan_idx in self.output_channels if chan_idx!=1 and chan_idx!=2 and chan_idx!=self.dy_weightmap_channel]
 
 		all_channels = [batch_by_channel[chan_idx] for chan_idx in other_output_channels]
 		all_channels.insert(0, dyIm)
@@ -93,10 +105,7 @@ class DyIterator(TrackingIterator):
 		labels_to_erase = _get_small_objects_at_boder_to_erase(labelImage, self.erase_cut_cell_length, self.closed_end)
 		if len(labels_to_erase)>0:
 			# erase in all mask image then in label image
-			# dilate image in case labels have been eroded
-			dilated = maximum_filter(labelImage, 5) # size >3 in case of zoom
-			dilated[labelImage != 0] = labelImage[labelImage != 0] # make sure other labels are not affected by dilatation
-			slice = dilated == labels_to_erase
+			slice = labelImage == labels_to_erase
 			for mask_chan_idx, c in zip(channel_idxs, channel_idxs_chan):
 				batch_by_channel[mask_chan_idx][batch_idx,...,c][slice]=0
 			labelImage[slice] = 0
