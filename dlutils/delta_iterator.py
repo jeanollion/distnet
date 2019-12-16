@@ -21,11 +21,11 @@ class DeltaIterator(TrackingIterator):
         # current frame: remove all cells but no_next
         # previous cells
         rawIms = batch_by_channel[0] # nothing to do
-        labels = batch_by_channel[1] # channel 0 -> choise one label and mark it in data_augmentation, channel 1 : binarize
+        labels = batch_by_channel[1] # channel 0 -> choose one label and mark it in data_augmentation, channel 1 : binarize
         return_labels = np.copy(labels)
-        return_labels[...,1][return_labels[...,1]>0]=1 # next : binarize
         for i in range(labels.shape[0]):
-            all_labels = np.unique(labels[i,...,0])
+            all_labels = list(np.unique(labels[i,...,0]))
+            all_labels.remove(0)
             if len(all_labels)==0:
                 return_labels[i,...,1] = 0
                 aug_param_array[i][1]["label"] = 0
@@ -33,10 +33,10 @@ class DeltaIterator(TrackingIterator):
                 label = choice(all_labels)
                 return_labels[i,...,0][return_labels[i,...,0] != label] = 0 # erase all other labels
                 aug_param_array[i][1]["label"] = label
+        return_labels[return_labels>0] = 1 # next : binarize all regions
         return [rawIms, return_labels]
 
     def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
-        # dy is computed and returned instead of labels & prevLabels
         labelIms = batch_by_channel[1][...,1]
         prevLabelIms = batch_by_channel[2][...,0]
         # return 1 channel: 0 = background, 1 = next 2 = next (2nd daughter)
