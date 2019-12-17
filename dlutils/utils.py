@@ -3,6 +3,7 @@ import tensorflow.keras.backend as K
 import tensorflow as tf
 from tensorflow.keras.callbacks import LearningRateScheduler
 import numpy as np
+import shutil
 
 def remove_duplicates(seq):
     seen = set()
@@ -93,9 +94,14 @@ def export_model_graph(model, outdir, filename="saved_model.pb", input_names=Non
     frozen_graph = freeze_session(K.get_session(), output_names=output_names)
     tf.train.write_graph(frozen_graph, outdir, filename, as_text=False)
 
-def export_model_bundle(model, outdir):
+def export_model_bundle(model, outdir, override=False):
     outputs = dict(zip([out.op.name for out in model.outputs], model.outputs))
     inputs = dict(zip([input.op.name for input in model.inputs], model.inputs))
+    if override:
+        try:
+            shutil.rmtree(outdir)
+        except:
+            pass
     tf.saved_model.simple_save(K.get_session(), export_dir=outdir, inputs=inputs, outputs=outputs)
     #print("inputs: {}, outputs: {}".format(inputs, outputs))
 
