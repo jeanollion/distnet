@@ -97,7 +97,7 @@ def export_model_graph(model, outdir, filename="saved_model.pb", input_names=Non
 def export_model_bundle(model, outdir, overwrite=False):
     outputs = dict(zip([out.op.name for out in model.outputs], model.outputs))
     inputs = dict(zip([input.op.name for input in model.inputs], model.inputs))
-    if override:
+    if overwrite:
         try:
             shutil.rmtree(outdir)
         except:
