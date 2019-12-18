@@ -50,10 +50,11 @@ class SelfAttention(Model):
         # attention_weights.shape == (batch_size, spa_dims, spa_dims)
         scaled_attention, attention_weights = scaled_dot_product_attention(q, k, v)
         output = tf.reshape(scaled_attention, (batch_size, self.spatial_dims[0], self.spatial_dims[1], self.d_model))
-        return output
+        tf.identity(attention_weights, name=self.name+"_attention_weights")
+        return output, attention_weights
 
     def compute_output_shape(self, input_shape):
-        return input_shape[:-1]+(self.d_model,)
+        return input_shape[:-1]+(self.d_model,), (input_shape[0],)+self.spatial_dims
 
 def scaled_dot_product_attention(q, k, v):
     """Calculate the attention weights.

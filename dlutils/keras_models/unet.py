@@ -37,8 +37,12 @@ class UnetEncoder():
         for layer_idx in range(self.n_down):
             last_input, res = self._encode_layer(last_input, layer_idx, layers_to_concatenate[layer_idx] if layers_to_concatenate else None)
             residuals.append(res)
-        feature_layer = self._encode_layer(last_input, self.n_down,  layers_to_concatenate[self.n_down] if layers_to_concatenate else None)
-        return feature_layer, residuals
+        if self.num_attention_heads>0:
+            feature_layer, attention_weights = self._encode_layer(last_input, self.n_down,  layers_to_concatenate[self.n_down] if layers_to_concatenate else None)
+            return feature_layer, residuals, attention_weights
+        else:
+            feature_layer = self._encode_layer(last_input, self.n_down,  layers_to_concatenate[self.n_down] if layers_to_concatenate else None)
+            return feature_layer, residuals
 
     def _make_layer(self, layer_idx):
         filters = self._get_n_filters(layer_idx)
@@ -54,7 +58,7 @@ class UnetEncoder():
                 else:
                     selfAttentionL = MultiHeadSelfAttention(filters, self.num_attention_heads, [sx,sy], name=self.name+str(layer_idx+1)+"_mh_self_attention" if self.name else None)
                 # TODO concat or average ?
-                sa_concatL=Concatenate(axis=3, name=self.name+str(layer_idx+1)+"self_attention_concat" if self.name else None)
+                sa_concatL=Concatenate(axis=3, name=self.name+str(layer_idx+1)+"_self_attention_concat" if self.name else None)
                 sa_conv1x1L = Conv2D(filters, (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name=self.name+str(layer_idx+1)+"_self_attention_conv1x1" if self.name else None)
                 self.layers.append([conv1L, concatL, selfAttentionL, sa_concatL, sa_conv1x1L])
             else:
@@ -68,14 +72,15 @@ class UnetEncoder():
         conv1 = layers[0](input)
         if layers_to_concatenate:
             conv1 = layers[1]([conv1]+layers_to_concatenate)
-        residual = layers[2](conv1)
         if layer_idx==self.n_down: # last layer : no contraction
             if self.num_attention_heads>0:
-                output = layers[3]([conv1, residual])
-                return layers[4](output)
+                attention, weights = layers[2](conv1)
+                output = layers[3]([conv1, attention])
+                return layers[4](output), weights
             else:
-                return residual
+                return layers[2](conv1)
         else:
+            residual = layers[2](conv1)
             max_pool = layers[3](residual)
             return max_pool, residual
 
@@ -153,8 +158,12 @@ class UnetDecoder():
             raise ValueError("encoder has {} enconding blocks whereas decoder has {} decoding blocks".format(enconder.n_down, self.n_up))
         if isinstance(input, list):
             input = Concatenate(axis=3)(input)
-        encoded, residuals = encoder.encode(input, layers_to_concatenate)
-        return (self.decode(encoded, residuals), input)
+        if encoder.num_attention_heads>0:
+            encoded, residuals, attention_weights = encoder.encode(input, layers_to_concatenate)
+            return self.decode(encoded, residuals), input, attention_weights
+        else:
+            encoded, residuals = encoder.encode(input, layers_to_concatenate)
+            return self.decode(encoded, residuals), input
 
     def _decode_layer(self, input, residual, layer_idx):
         layers = self.layers[layer_idx]
@@ -184,7 +193,7 @@ def concat_and_conv(inputs, n_filters, layer_name):
     concat = Concatenate(axis=3, name = layer_name+"_concat")(inputs)
     return Conv2D(n_filters, (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name = layer_name+"_conv1x1")(concat)
 
-def get_unet_model(image_shape, n_contractions, filters=64, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=False, n_inputs=1, n_input_channels=1, use_self_attention=False, num_attention_heads=1, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True):
+def get_unet_model(image_shape, n_contractions, filters=64, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=False, n_inputs=1, n_input_channels=1, use_self_attention=False, num_attention_heads=1, output_attention_weights=False, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True):
     n_output_channels = _ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = _ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = _ensure_multiplicity(n_inputs, n_input_channels)
@@ -216,16 +225,24 @@ def get_unet_model(image_shape, n_contractions, filters=64, max_filters=0, n_out
         return concat_and_conv(concat, filters[1], "intermediate_"+str(rank))
 
     all_outputs = []
-    dec, _input = decoders[0].encode_and_decode(input, encoders[0]) # if several inputs _input = concatenated tensor
+    if use_self_attention:
+        dec, _input, attention_weights = decoders[0].encode_and_decode(input, encoders[0]) # if several inputs _input = concatenated tensor
+    else:
+        dec, _input = decoders[0].encode_and_decode(input, encoders[0]) # if several inputs _input = concatenated tensor
     decoded_layers = [dec]
     for i in range(1, n_stack):
         if stacked_intermediate_outputs:
             all_outputs.append(get_output(decoded_layers[-1], rank=i))
         intermediate_input = get_intermediate_input(decoded_layers[-2] if i>1 else None, decoded_layers[-1], all_outputs[-1] if stacked_intermediate_outputs else None, i)
-        decoded, _ = decoders[i].encode_and_decode(intermediate_input, encoders[i])
+        if use_self_attention:
+            decoded, _, attention_weights = decoders[i].encode_and_decode(intermediate_input, encoders[i])
+        else:
+            decoded, _ = decoders[i].encode_and_decode(intermediate_input, encoders[i])
         decoded_layers.append(decoded)
 
     all_outputs.append(get_output(decoded_layers[-1]))
+    if use_self_attention and output_attention_weights:
+        all_outputs.append(attention_weights)
     return Model(input, flatten_list(all_outputs))
 
 def flatten_list(l):
