@@ -7,19 +7,20 @@ class SelfAttention(Model):
     def __init__(self, d_model, spatial_dims, positional_encoding=True, name="self_attention"):
         '''
             d_model : number of output channels
-            max_spatial_dim : max number of spatial dimensions of input tensor (x * y). if > 0 enables positional encoding
+            spatial_dim : spatial dimensions of input tensor (x , y)
+            if positional_encoding: depth must correspond to input channel number
             adapted from: https://www.tensorflow.org/tutorials/text/transformer
         '''
-        super(SelfAttention, self).__init__(name=name)
+        super().__init__(name=name)
         self.d_model = d_model
         self.spatial_dims=spatial_dims
         self.spatial_dim = np.prod(spatial_dims)
-        self.wq = Dense(d_model)
-        self.wk = Dense(d_model)
-        self.wv = Dense(d_model)
-
+        self.wq = Dense(self.d_model, name=name+"_q")
+        self.wk = Dense(self.d_model, name=name+"_k")
+        self.wv = Dense(self.d_model, name=name+"_w")
+        self.positional_encoding=positional_encoding
         if positional_encoding:
-            self.pos_embedding = Embedding(self.spatial_dim, d_model)
+            self.pos_embedding = Embedding(self.spatial_dim, d_model, name=name+"pos_enc")
 
     def call(self, x):
         '''
@@ -31,7 +32,7 @@ class SelfAttention(Model):
         #spatial_dim = tf.reduce_prod(spatial_dims)
         depth_dim = shape[3]
 
-        if self.pos_embedding is not None:
+        if self.positional_encoding:
             x_index = tf.range(self.spatial_dim, dtype=tf.int32)
             pos_emb = self.pos_embedding(x_index) # (spa_dim, d_model)
             pos_emb = tf.reshape(pos_emb, (self.spatial_dims[0], self.spatial_dims[1], self.d_model)) #for broadcasting purpose

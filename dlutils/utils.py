@@ -103,7 +103,7 @@ def export_model_bundle(model, outdir, overwrite=False):
         except:
             pass
     tf.saved_model.simple_save(K.get_session(), export_dir=outdir, inputs=inputs, outputs=outputs)
-    #print("inputs: {}, outputs: {}".format(inputs, outputs))
+    print("inputs: {}, outputs: {}".format(inputs, outputs))
 
 def evaluate_model(iterator, model, metrics, metric_names, xp_idx_in_path=2, position_idx_in_path=3, progress_callback=None):
     try:
