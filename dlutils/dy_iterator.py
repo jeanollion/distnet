@@ -4,6 +4,13 @@ from scipy.ndimage import center_of_mass, find_objects, maximum_filter
 from scipy.ndimage.measurements import mean
 from math import copysign
 from dlutils.image_data_generator_mm import has_object_at_y_borders
+import sys
+import itertools
+
+try:
+	import edt
+except e:
+	pass
 
 class DyIterator(TrackingIterator):
 	def __init__(self,
@@ -14,6 +21,8 @@ class DyIterator(TrackingIterator):
 		channels_prev=[True, True, False, True],
 		channels_next=[False, False, False, False],
 		return_categories = False,
+		return_labels = False,
+		compute_edm = False,
 		mask_channels=[1, 2, 3],
 		weightmap_channel = None,
 		output_multiplicity = 1,
@@ -43,6 +52,9 @@ class DyIterator(TrackingIterator):
 		self.closed_end=closed_end
 		self.erase_cut_cell_length=erase_cut_cell_length
 		self.weightmap_channel = weightmap_channel
+		self.return_labels = return_labels
+		self.compute_edm = compute_edm
+		assert not compute_edm or 'edt' in sys.modules, "edt module not installed"
 		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, channels_prev, channels_next, mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
@@ -95,14 +107,24 @@ class DyIterator(TrackingIterator):
 					categories_next = np.concatenate([categories_next, wm[...,1:]], -1)
 				else:
 					categories = np.concatenate([categories, wm], -1)
-		other_output_channels = [chan_idx for chan_idx in self.output_channels if chan_idx!=1 and chan_idx!=2 and chan_idx!=self.weightmap_channel]
 
+		if self.return_labels:
+			dyIm = np.concatenate([dyIm, labelIms[...,1:]], -1)
+
+		other_output_channels = [chan_idx for chan_idx in self.output_channels if chan_idx!=1 and chan_idx!=2 and chan_idx!=self.weightmap_channel]
 		all_channels = [batch_by_channel[chan_idx] for chan_idx in other_output_channels]
 		all_channels.insert(0, dyIm)
 		if self.return_categories:
 			all_channels.insert(1, categories)
 			if return_next:
 				all_channels.insert(2, categories_next)
+		if self.compute_edm:
+			edm = np.zeros(shape = labelIms.shape, dtype=np.float32)
+			y_up = 1 if self.closed_end else 0
+			for b,c in itertools.product(range(edm.shape[0]), range(edm.shape[-1])):
+				# padding along x axis + black_border = False to take into account that cells can go out from upper / lower borders
+				edm[b,...,c] = edt.edt(np.pad(labelIms[b,...,c], pad_width=((y_up, 0),(1, 1)), mode='constant', constant_values=0), black_border=False)[y_up:,1:-1]
+			all_channels.append(edm)
 		return all_channels
 
 	def _erase_small_objects_at_border(self, labelImage, batch_idx, channel_idxs, channel_idxs_chan, batch_by_channel):
