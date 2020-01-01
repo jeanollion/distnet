@@ -6,10 +6,9 @@ from math import copysign
 from dlutils.image_data_generator_mm import has_object_at_y_borders
 import sys
 import itertools
-
 try:
 	import edt
-except e:
+except Exception:
 	pass
 
 class DyIterator(TrackingIterator):
