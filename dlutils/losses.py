@@ -112,22 +112,26 @@ def weighted_loss_by_category(original_loss_func, weights_list, axis=-1, sparse=
         return loss
     return loss_func
 
-def pixelwise_weighted_loss(original_loss_func):
+def pixelwise_weighted_loss(original_loss_func, y_true_channels=None, weight_channels=None):
     '''
     This function implements pixel-wise weighted loss
-    if y_true has 2n channels, weight maps are the Weight map are [n, 2n) channels
+    if y_true has 2n channels, weight maps are the Weight map are [n, 2n) channels; otherwise y_true channels and weight channels can be specified as lists of length 2
     '''
-    def loss_func(y_true, y_pred):
-        channels = tf.shape(y_true)[-1]
-        #if channels%2!=0:
-        #    raise ValueError("invalid channel number for y_true: should be a multiple of 2")
-        mid = channels // 2
-
-        weightMap = y_true[...,mid:]
-        y_true = y_true[...,0:mid]
-        
-        loss = original_loss_func(y_true, y_pred)
-        loss = tf.expand_dims(loss, -1)
-        return loss * weightMap
-        #return K.mean(loss * weightMap, axis=-1)
+    #@tf.function
+    if y_true_channels is None:
+        def loss_func(y_true, y_pred):
+            channels = tf.shape(y_true)[-1]
+            mid = channels // 2
+            weightMap = y_true[...,mid:]
+            y_true = y_true[...,0:mid]
+            loss = original_loss_func(y_true, y_pred)
+            loss = tf.expand_dims(loss, -1)
+            return loss * weightMap
+    else:
+        def loss_func(y_true, y_pred):
+            weightMap = y_true[...,weight_channels[0]:weight_channels[1]]
+            y_true = y_true[...,y_true_channels[0]:y_true_channels[1]]
+            loss = original_loss_func(y_true, y_pred)
+            loss = tf.expand_dims(loss, -1)
+            return loss * weightMap
     return loss_func
