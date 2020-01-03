@@ -6,6 +6,8 @@ import random
 from random import uniform, random, randint, getrandbits
 from scipy import interpolate
 import copy
+from scipy.ndimage.filters import generic_filter
+
 
 def binary_erode_labelwise(label_img):
     '''
@@ -25,6 +27,21 @@ def binary_erode_labelwise(label_img):
             subregion = label_img[region]
             eroded = binary_erosion(subregion == val, border_value = 1)
             subregion[(subregion == val) *np.logical_not(eroded)] = 0 # erase eroded region only within object
+
+def _getContours(element):
+    v = element[4]
+    if v==0:
+        return False
+    else:
+        for i in range(9):
+            if i!=4 and element[i]!=v:
+                return True
+        return False
+
+def extractContourMask(labeled_image, output=None):
+    if output is None:
+        output = np.zeros(shape=labeled_image.shape, dtype=np.bool_)
+    return generic_filter(labeled_image, _getContours, size=3, output=output, mode='constant')
 
 def sometimes(func, prob=0.5):
     return lambda im:func(im) if random()<prob else im
