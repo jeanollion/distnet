@@ -161,7 +161,7 @@ class ImageDataGeneratorMM(ImageDataGenerator):
             space_y = ndi.find_objects(space_y)
             space_y = [slice_obj[0] for slice_obj in space_y] # only first dim
             limit = mask_img.shape[0]
-            space_y = [slice_obj for slice_obj in space_y if (slice_obj.stop - slice_obj.start)>4 and slice_obj.stop>10 and (self.closed_end or slice_obj.start>0) and slice_obj.stop<limit] # keep only slices with length > 4 and not the space close to the open ends
+            space_y = [slice_obj for slice_obj in space_y if (slice_obj.stop - slice_obj.start)>2 and slice_obj.stop>15 and (self.closed_end or slice_obj.start>0) and slice_obj.stop<limit] # keep only slices with length > 4 and not the space close to the open ends
             if len(space_y)>0:
                 space_y = [(slice_obj.stop + slice_obj.start)//2 for slice_obj in space_y]
                 y = choice(space_y)
@@ -267,11 +267,9 @@ def has_object_at_y_borders(mask_img):
 def forbid_transformations_if_object_touching_borders(aug_param, mask_img, closed_end):
     tx = aug_param.get('tx', 0)
     zx = aug_param.get('zx', 1)
-    shear = 0 #aug_param.get('shear', 0)
-    theta = 0 #aug_param.get('theta', 0)
-    if tx!=0 or zx>1 or theta!=0 or shear!=0:
+    if tx!=0 or zx>1:
         has_object_up, has_object_down = has_object_at_y_borders(mask_img) # up & down as in the displayed image
-        if zx<1:
+        if zx<1: # zoom in
             tx_lim = mask_img.shape[0] * (1 - zx) / 2
         else:
             tx_lim = 0
@@ -280,17 +278,13 @@ def forbid_transformations_if_object_touching_borders(aug_param, mask_img, close
                 aug_param['tx']=-tx_lim
             else:
                 aug_param['tx']=0
-        elif has_object_up and tx<-tx_lim:
+        elif has_object_down and tx<-tx_lim:
             aug_param['tx']=-tx_lim
-        elif has_object_down and tx>tx_lim:
+        elif has_object_up and tx>tx_lim:
             aug_param['tx']=tx_lim
         if has_object_up or has_object_down:
             if zx>1:
                 aug_param['zx'] = 1
-            if shear!=0:
-                aug_param['shear'] = 0
-            if theta!=0:
-                aug_param['theta'] = 0
 
 def transfer_illumination_aug_parameters(source, dest):
     if "vmin" in source and "vmax" in source:
