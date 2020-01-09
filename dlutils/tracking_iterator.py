@@ -80,19 +80,19 @@ class TrackingIterator(MultiChannelIterator):
 			params_prev = super()._get_data_augmentation_parameters(chan_idx, ref_chan_idx, batch[...,0:1], idx, index_ds, index_array)
 			self._transfer_illumination_aug_param(params, params_prev)
 			self._transfer_geom_aug_param_neighbor(params, params_prev)
-			try:
-				self.image_data_generators[chan_idx].adjust_augmentation_param_from_mask(params_prev, batch[idx,...,0])
-			except AttributeError: # data generator does not have this method
-				pass
+			#try:
+			#	self.image_data_generators[chan_idx].adjust_augmentation_param_from_mask(params_prev, batch[idx,...,0])
+			#except AttributeError: # data generator does not have this method
+			#	pass
 			params["aug_params_prev"] = params_prev
 		if self.channels_next[chan_idx]:
 			params_next = super()._get_data_augmentation_parameters(chan_idx, ref_chan_idx, batch[...,-1:], idx, index_ds, index_array)
 			self._transfer_illumination_aug_param(params, params_next)
 			self._transfer_geom_aug_param_neighbor(params, params_next)
-			try:
-				self.image_data_generators[chan_idx].adjust_augmentation_param_from_mask(params_next, batch[idx,...,-1])
-			except AttributeError: # data generator does not have this method
-				pass
+			# try:
+			# 	self.image_data_generators[chan_idx].adjust_augmentation_param_from_mask(params_next, batch[idx,...,-1])
+			# except AttributeError: # data generator does not have this method
+			# 	pass
 			params["aug_params_next"] = params_next
 		return params
 
