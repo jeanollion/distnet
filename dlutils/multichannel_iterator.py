@@ -34,6 +34,9 @@ class MultiChannelIterator(IndexArrayIterator):
 		self.perform_data_augmentation=perform_data_augmentation
 		self.mask_channels = mask_channels
 		self.output_multiplicity=output_multiplicity
+		if len(mask_channels)>0:
+			assert min(mask_channels)>=0, "invalid mask channel: should be >=0"
+			assert max(mask_channels)<len(channel_keywords), "invalid mask channel: should be in range [0-{})".format(len(channel_keywords))
 		if output_channels is None:
 			output_channels = []
 		if input_channels is None or len(input_channels)==0:
@@ -98,8 +101,8 @@ class MultiChannelIterator(IndexArrayIterator):
 							raise ValueError("No percentile array found in group {} for channel: {}({})".format(group, c, channel_keywords[c]))
 						percentiles = self.h5py_file[group].attrs.get(channel_keywords[c].replace('/', '')+'_percentiles')
 						# get IQR and median
-						min, med, max = np.interp([scaling_info.get('qmin', 5), 50, scaling_info.get('qmax', 95)], percentile_x, percentiles)
-						self.channel_scaling[c][ds_idx] = [med, max-min]
+						minv, med, maxv = np.interp([scaling_info.get('qmin', 5), 50, scaling_info.get('qmax', 95)], percentile_x, percentiles)
+						self.channel_scaling[c][ds_idx] = [med, maxv-minv]
 
 		self._close_h5py_file()
 		super().__init__(indexes[-1], batch_size, shuffle, seed)
@@ -258,9 +261,9 @@ class MultiChannelIterator(IndexArrayIterator):
 					for k,v in params.items():
 						aug_param_array[i][chan_idx][k]=v
 				batch[i] = self._apply_augmentation(batch[i], chan_idx, params)
-			else:
-				if chan_idx not in self.mask_channels: # in case no data augmentation -> set range to [0, 1] # todo add parameter ? # do this for all grayscale channels
-					batch[i] = pp.adjust_histogram_range(batch[i])
+			#else:
+			#	if chan_idx not in self.mask_channels: # in case no data augmentation -> set range to [0, 1] # todo add parameter ? # do this for all grayscale channels
+			#		batch[i] = pp.adjust_histogram_range(batch[i])
 
 		return batch
 
