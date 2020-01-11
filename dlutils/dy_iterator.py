@@ -22,7 +22,7 @@ class DyIterator(TrackingIterator):
 		channels_next=[False, False, False, False],
 		return_categories = False,
 		return_labels = False,
-		compute_edm = False,
+		compute_edm = None, # expected: "current" "all"
 		compute_weights=False,
 		mask_channels=[1, 2, 3],
 		weightmap_channel = None,
@@ -56,6 +56,7 @@ class DyIterator(TrackingIterator):
 		self.return_labels = return_labels
 		self.compute_edm = compute_edm
 		self.compute_weights=compute_weights
+		assert not compute_edm or compute_edm in ["all", "current"], "invalid value for compute_edm argument"
 		assert not compute_edm or 'edt' in sys.modules, "edt module not installed"
 		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, channels_prev, channels_next, mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
@@ -134,11 +135,17 @@ class DyIterator(TrackingIterator):
 			if return_next:
 				all_channels.insert(2, categories_next)
 		if self.compute_edm:
-			edm = np.zeros(shape = labelIms.shape, dtype=np.float32)
+			if self.compute_edm=="all":
+				edm_c = labelIms.shape[-1]
+				i_c=0
+			elif self.compute_edm=="current":
+				edm_c=1
+				i_c=1
+			edm = np.zeros(shape = labelIms.shape[:-1]+(edm_c,), dtype=np.float32)
 			y_up = 1 if self.closed_end else 0
 			for b,c in itertools.product(range(edm.shape[0]), range(edm.shape[-1])):
 				# padding along x axis + black_border = False to take into account that cells can go out from upper / lower borders
-				edm[b,...,c] = edt.edt(np.pad(labelIms[b,...,c], pad_width=((y_up, 0),(1, 1)), mode='constant', constant_values=0), black_border=False)[y_up:,1:-1]
+				edm[b,...,c] = edt.edt(np.pad(labelIms[b,...,c+i_c], pad_width=((y_up, 0),(1, 1)), mode='constant', constant_values=0), black_border=False)[y_up:,1:-1]
 			all_channels.append(edm)
 		return all_channels
 
