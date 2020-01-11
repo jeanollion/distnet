@@ -7,6 +7,7 @@ from tensorflow.keras.losses import mean_squared_error
 import os
 from tensorflow.keras.preprocessing.image import array_to_img, img_to_array, load_img
 from .self_attention import SelfAttention
+from .attention import Attention
 from .multihead_self_attention import MultiHeadSelfAttention
 
 def get_slice_channel_layer(channel, name=None): # tensorflow function !!
@@ -98,11 +99,13 @@ class UnetEncoder():
                     if self.layer_norm:
                         output = layers[5](output)
                     return output, weights
-            else:
+            elif self.num_attention_heads==0:
                 conv2 = layers[2](conv1)
                 if self.layer_norm:
                     conv2 = layers[3](conv2)
                 return conv2
+            else:
+                return conv1
         else:
             residual = layers[2](conv1)
             max_pool = layers[3](residual)
@@ -193,7 +196,10 @@ class UnetDecoder():
         layers = self.layers[layer_idx]
         upsample = layers[0](input)
         upconv = layers[1](upsample)
-        concat = layers[2]([residual, upconv])
+        if isinstance(residual, list):
+            concat = layers[2](residual+[upconv])
+        else:
+            concat = layers[2]([residual, upconv])
         conv1 = layers[3](concat)
         conv2 = layers[4](conv1)
         return conv2
@@ -266,6 +272,47 @@ def get_unet_model(image_shape, n_contractions, filters=64, max_filters=0, n_out
 
     all_outputs.append(get_output(decoded_layers[-1]))
     if use_self_attention and output_attention_weights:
+        all_outputs.append(attention_weights)
+    return Model(input, flatten_list(all_outputs))
+
+def get_attention_tracking_model(image_shape, n_contractions, filters=[32, 64], max_filters=1024, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=False, add_attention=False, num_attention_heads=1, output_attention_weights=False, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True):
+    n_output_channels = _ensure_multiplicity(n_outputs, n_output_channels)
+    out_activations = _ensure_multiplicity(n_outputs, out_activations)
+    filters = _ensure_multiplicity(2, filters)
+    max_filters =  _ensure_multiplicity(2, max_filters)
+    encoder = UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, -1, False, False, name="encoder_")
+    decoder = UnetDecoder(n_contractions, filters[1], max_filters[1], image_shape, anisotropic_conv, n_last_1x1_conv=n_1x1_conv_after_decoder, use_1x1_conv_after_concat=use_1x1_conv_after_concat, name="decoder_")
+
+    input = Input(shape = image_shape+(2,), name="input")
+    [input_prev, input_cur] = tf.unstack(input, 2, axis=-1)
+    input_prev = tf.expand_dims(input_prev, -1)
+    input_cur = tf.expand_dims(input_cur, -1)
+
+    def get_output(layer, rank=0):
+        name = "" if rank==0 else "_i"+str(rank)+"_"
+        if n_outputs>1:
+            return [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+name+str(i))(layer) for i in range(n_outputs)]
+        else:
+            return Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output"+name)(layer)
+
+    enc_prev, res_prev = encoder.encode(input_prev) # prev
+    enc_cur, res_cur = encoder.encode(input_cur) # cur
+    residuals = [[res_prev[i], res_cur[i]] for i in range(len(res_cur))]
+    sx, sy = encoder._get_image_shape(n_contractions)
+    attentionL = Attention(encoder._get_n_filters(n_contractions), [sx,sy], name=encoder.name+str(n_contractions+1)+"_attention")
+    attention, attention_weights = attentionL([enc_cur, enc_prev])
+    if add_attention:
+        encoded = attention + enc_cur
+    else:
+        a_concatL=Concatenate(axis=3, name=encoder.name+str(n_contractions+1)+"_attention_concat")
+        a_conv1x1L = Conv2D(encoder._get_n_filters(n_contractions), (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name=encoder.name+str(n_contractions+1)+"_attention_conv1x1")
+        concat = a_concatL([attention, enc_cur])
+        encoded = a_conv1x1L(concat)
+    decoded = decoder.decode(encoded, residuals)
+
+    all_outputs = []
+    all_outputs.append(get_output(decoded))
+    if output_attention_weights:
         all_outputs.append(attention_weights)
     return Model(input, flatten_list(all_outputs))
 
