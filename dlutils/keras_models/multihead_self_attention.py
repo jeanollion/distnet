@@ -58,7 +58,7 @@ class MultiHeadSelfAttention(Model):
         v = self.split_heads(v, batch_size)  # (batch_size, num_heads, spa_dim, depth)
 
         # scaled_attention.shape == (batch_size, num_heads, spa_dim, depth)
-        # attention_weights.shape == (batch_size, num_heads, spa_dim, spa_dims)
+        # attention_weights.shape == (batch_size, num_heads, spa_dim, spa_dim)
         scaled_attention, attention_weights = scaled_dot_product_attention(q, k, v)
         tf.identity(attention_weights, name=self.name+"_attention_weights")
         scaled_attention = tf.transpose(scaled_attention, perm=[0, 2, 1, 3])  # (batch_size, spa_dims, num_heads, depth)
@@ -68,4 +68,4 @@ class MultiHeadSelfAttention(Model):
         return output, attention_weights
 
     def compute_output_shape(self, input_shape):
-        return input_shape[:-1]+(self.depth,), (input_shape[0], self.num_heads)+self.spatial_dims
+        return input_shape[:-1]+(self.depth,), (input_shape[0], self.num_heads, self.spatial_dim, self.spatial_dim)

@@ -27,7 +27,7 @@ class Attention(Model):
             x : list of 2 tensor with shape (batch_size, y, x, channels)
         '''
         [input, output] = x
-        shape = tf.shape(input)
+        shape = tf.shape(output)
         batch_size = shape[0]
         #spatial_dims = shape[1:-1]
         #spatial_dim = tf.reduce_prod(spatial_dims)
@@ -40,9 +40,9 @@ class Attention(Model):
             input = input + pos_emb # broadcast
             output = output + pos_emb # broadcast
 
-        q = self.wq(input)  # (batch_size, *spa_dims, d_model)
+        q = self.wq(output)  # (batch_size, *spa_dims, d_model)
         k = self.wk(input)  # (batch_size, *spa_dims, d_model)
-        v = self.wv(output)  # (batch_size, *spa_dims, d_model)
+        v = self.wv(input)  # (batch_size, *spa_dims, d_model)
 
         q = tf.reshape(q, (batch_size, -1, depth_dim)) # (batch_size, spa_dim, d_model)
         k = tf.reshape(k, (batch_size, -1, depth_dim))
@@ -56,7 +56,7 @@ class Attention(Model):
         return output, attention_weights
 
     def compute_output_shape(self, input_shape):
-        return input_shape[:-1]+(self.d_model,), (input_shape[0],)+self.spatial_dims
+        return input_shape[:-1]+(self.d_model,), (input_shape[0],self.spatial_dim,self.spatial_dims)
 
 def scaled_dot_product_attention(q, k, v):
     """Calculate the attention weights.

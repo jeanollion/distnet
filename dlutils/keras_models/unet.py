@@ -7,6 +7,7 @@ from tensorflow.keras.losses import mean_squared_error
 import os
 from tensorflow.keras.preprocessing.image import array_to_img, img_to_array, load_img
 from .self_attention import SelfAttention
+from .attention_self_attention import AttentionSelfAttention
 from .attention import Attention
 from .multihead_self_attention import MultiHeadSelfAttention
 
@@ -79,7 +80,10 @@ class UnetEncoder():
 
     def _encode_layer(self, input, layer_idx, layers_to_concatenate=None):
         layers = self.layers[layer_idx]
-        conv1 = layers[0](input)
+        if self.num_attention_heads>=-1:
+            conv1 = layers[0](input)
+        else:
+            conv1=input
         if layers_to_concatenate:
             conv1 = layers[1]([conv1]+layers_to_concatenate)
         if layer_idx==self.n_down: # last layer : no contraction
@@ -106,6 +110,7 @@ class UnetEncoder():
                 return conv2
             else:
                 return conv1
+
         else:
             residual = layers[2](conv1)
             max_pool = layers[3](residual)
@@ -275,12 +280,12 @@ def get_unet_model(image_shape, n_contractions, filters=64, max_filters=0, n_out
         all_outputs.append(attention_weights)
     return Model(input, flatten_list(all_outputs))
 
-def get_attention_tracking_model(image_shape, n_contractions, filters=[32, 64], max_filters=1024, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=False, add_attention=False, num_attention_heads=1, output_attention_weights=False, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True):
+def get_attention_tracking_model(image_shape, n_contractions, filters=[32, 64], max_filters=1024, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=False, self_attention=False, add_attention=False, num_attention_heads=1, output_attention_weights=False, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True):
     n_output_channels = _ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = _ensure_multiplicity(n_outputs, out_activations)
     filters = _ensure_multiplicity(2, filters)
     max_filters =  _ensure_multiplicity(2, max_filters)
-    encoder = UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, -1, False, False, name="encoder_")
+    encoder = UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, -2 if self_attention else -1, False, False, name="encoder_")
     decoder = UnetDecoder(n_contractions, filters[1], max_filters[1], image_shape, anisotropic_conv, n_last_1x1_conv=n_1x1_conv_after_decoder, use_1x1_conv_after_concat=use_1x1_conv_after_concat, name="decoder_")
 
     input = Input(shape = image_shape+(2,), name="input")
@@ -297,15 +302,20 @@ def get_attention_tracking_model(image_shape, n_contractions, filters=[32, 64], 
 
     enc_prev, res_prev = encoder.encode(input_prev) # prev
     enc_cur, res_cur = encoder.encode(input_cur) # cur
-    residuals = [[res_prev[i], res_cur[i]] for i in range(len(res_cur))]
+    #residuals = [[res_prev[i], res_cur[i]] for i in range(len(res_cur))]
+    residuals = res_cur
     sx, sy = encoder._get_image_shape(n_contractions)
-    attentionL = Attention(encoder._get_n_filters(n_contractions), [sx,sy], name=encoder.name+str(n_contractions+1)+"_attention")
-    attention, attention_weights = attentionL([enc_cur, enc_prev])
+    n_filters_att = encoder._get_n_filters(n_contractions)
+    if self_attention:
+        attentionL = AttentionSelfAttention(n_filters_att, [sx,sy], name=encoder.name+str(n_contractions+1)+"_attention_selfattention")
+    else:
+        attentionL = Attention(n_filters_att, [sx,sy], name=encoder.name+str(n_contractions+1)+"_attention")
+    attention, attention_weights = attentionL([enc_prev, enc_cur])
     if add_attention:
         encoded = attention + enc_cur
     else:
         a_concatL=Concatenate(axis=3, name=encoder.name+str(n_contractions+1)+"_attention_concat")
-        a_conv1x1L = Conv2D(encoder._get_n_filters(n_contractions), (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name=encoder.name+str(n_contractions+1)+"_attention_conv1x1")
+        a_conv1x1L = Conv2D(n_filters_att, (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name=encoder.name+str(n_contractions+1)+"_attention_conv1x1")
         concat = a_concatL([attention, enc_cur])
         encoded = a_conv1x1L(concat)
     decoded = decoder.decode(encoded, residuals)
