@@ -8,7 +8,7 @@ import copy
 import scipy.ndimage as ndi
 
 class ImageDataGeneratorMM(ImageDataGenerator):
-    def __init__(self, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, bacteria_swim_distance=50, closed_end=True, **kwargs):
+    def __init__(self, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, bacteria_swim_distance=50, bacteria_swim_min_gap=3, closed_end=True, **kwargs):
         if width_zoom_range!=0. or height_zoom_range!=0.:
             kwargs["zoom_range"] = 0.
             if np.isscalar(width_zoom_range):
@@ -46,6 +46,7 @@ class ImageDataGeneratorMM(ImageDataGenerator):
         self.illumination_voodoo_intensity=illumination_voodoo_intensity
         self.perform_illumination_augmentation = perform_illumination_augmentation
         self.bacteria_swim_distance=bacteria_swim_distance
+        self.bacteria_swim_min_gap=bacteria_swim_min_gap
         self.closed_end = closed_end
         super().__init__(**kwargs)
 
@@ -161,12 +162,20 @@ class ImageDataGeneratorMM(ImageDataGenerator):
             space_y = ndi.find_objects(space_y)
             space_y = [slice_obj[0] for slice_obj in space_y] # only first dim
             limit = mask_img.shape[0]
-            space_y = [slice_obj for slice_obj in space_y if (slice_obj.stop - slice_obj.start)>2 and slice_obj.stop>15 and (self.closed_end or slice_obj.start>0) and slice_obj.stop<limit] # keep only slices with length > 4 and not the space close to the open ends
+            space_y = [slice_obj for slice_obj in space_y if (slice_obj.stop - slice_obj.start)>=self.bacteria_swim_min_gap and slice_obj.stop>15 and (self.closed_end or slice_obj.start>0) and slice_obj.stop<limit] # keep only slices with length > 4 and not the space close to the open ends
+            #space_y = [slice_obj for slice_obj in space_y if (slice_obj.stop - slice_obj.start)>2 and (self.closed_end or slice_obj.start>0) and slice_obj.stop<limit] # keep only slices with length > 2 and not the space close to the open ends
             if len(space_y)>0:
                 space_y = [(slice_obj.stop + slice_obj.start)//2 for slice_obj in space_y]
+                #space_y_mean = [(slice_obj.stop + slice_obj.start)//2 if slice_obj.start>0 else 0 for slice_obj in space_y]
                 y = choice(space_y)
-                swim_params = {"y": y, "lower": self.closed_end or not getrandbits(1), "distance": uniform(1, self.bacteria_swim_distance)}
+                #y = choice(space_y_mean)
+                lower = self.closed_end or not getrandbits(1)
+                if y==0:
+                    lower = True
+                # TODO choose a distance so that bacteria are not cut too much
+                swim_params = {"y": y, "lower": lower, "distance": uniform(1, self.bacteria_swim_distance)}
                 params["bacteria_swim"] = swim_params
+                #params['tx'] = min_tx
 
     def adjust_augmentation_param_from_neighbor_mask(self, params, neighbor_mask_img):
         if params.get('zx', 1)>1: # forbid zx>1 if there are object @ border @ prev/next time point because zoom will be copied to prev/next transformation
