@@ -7,7 +7,29 @@ from random import uniform, random, randint, getrandbits
 from scipy import interpolate
 import copy
 from scipy.ndimage.filters import generic_filter
+try:
+	import edt
+except Exception:
+	pass
 
+def multilabel_edt(label_img, closed_end=True):
+    '''
+        multilabel edt requires edt package.
+        along y-axis (1st axis) : out-of-bound is considered as foreground of upper and lower ends if closed_end=False else only for lower end
+    '''
+    y_up = 1 if closed_end else 0
+    if len(label_img.shape)==3:
+        squeeze = True
+        label_img = np.squeeze(label_img, -1)
+    else:
+        squeeze=False
+    label_img = edt.edt(np.pad(label_img, pad_width=((y_up, 0),(1, 1)), mode='constant', constant_values=0), black_border=False)[y_up:,1:-1]
+    if squeeze:
+        label_img = np.expand_dims(label_img, -1)
+    return label_img
+
+def binarize(img):
+    return np.where(img>0, 1, 0)
 
 def binary_erode_labelwise(label_img):
     '''
