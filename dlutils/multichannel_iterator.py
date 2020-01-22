@@ -105,6 +105,7 @@ class MultiChannelIterator(IndexArrayIterator):
 						self.channel_scaling[c][ds_idx] = [med, maxv-minv]
 
 		self._close_h5py_file()
+		self.void_mask_max_proportion = -1
 		super().__init__(indexes[-1], batch_size, shuffle, seed)
 
 	def _open_h5py_file(self):
@@ -275,8 +276,6 @@ class MultiChannelIterator(IndexArrayIterator):
 		return img
 
 	def _read_image_batch(self, index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array):
-		im_shape = self.channel_image_shapes[chan_idx]
-		channel = () if len(im_shape)==3 else (1,)
 		# read all images
 		images = [self._read_image(chan_idx, ds_idx, im_idx) for i, (ds_idx, im_idx) in enumerate(zip(index_ds, index_array))]
 		batch = np.stack(images)
@@ -404,6 +403,47 @@ class MultiChannelIterator(IndexArrayIterator):
 		ds = self.ds_array[mask_channel_idx][ds_idx]
 		off = ds.attrs.get('scaling_center', [0])[0] # supposes there are no other scaling for mask channel
 		return np.any(ds[im_idx, [-1,0], :] - off, 1) # np.flip()
+
+	def _get_void_masks(self):
+		assert len(self.mask_channels)>0, "cannot compute void mask if no mask channel is defined"
+		if self.h5py_file is None: # for concurency issues: file is open lazyly by each worker
+			self._open_h5py_file()
+		mask_channel = self.mask_channels[0]
+		index_array = np.copy(self.allowed_indexes)
+		index_ds = self._get_ds_idx(index_array)
+		void_masks = np.array([not np.any(self._read_image(mask_channel, ds_idx, im_idx)) for i, (ds_idx, im_idx) in enumerate(zip(index_ds, index_array))])
+		return void_masks
+
+	def set_allowed_indexes(self, indexes):
+		super().set_allowed_indexes(indexes)
+		try: # reset void masks
+			del self.void_masks
+		except AttributeError:
+			pass
+
+	def _set_index_array(self):
+		if self.void_mask_max_proportion>=0: # in case there are too many void masks -> some are randomly removed
+			try:
+				void_masks = self.void_masks
+			except AttributeError:
+				self.void_masks = self._get_void_masks()
+				void_masks = self.void_masks
+			bins = np.bincount(void_masks) #[not void ; void]
+			prop = bins[1] / (bins[0]+bins[1])
+			target_void_count = int( (self.void_mask_max_proportion / (1 - self.void_mask_max_proportion) ) * bins[0] )
+			n_rem  = bins[1] - target_void_count
+			if n_rem>0:
+				idx_void = np.flatnonzero(void_masks)
+				to_rem = np.random.choice(idx_void, n_rem, replace=0)
+				index_a = np.delete(self.allowed_indexes, to_rem)
+			else:
+				index_a = self.allowed_indexes
+		else:
+			index_a = self.allowed_indexes
+		if self.shuffle:
+			self.index_array = np.random.permutation(index_a)
+		else:
+			self.index_array = np.copy(index_a)
 
 	def evaluate(self, model, metrics, progress_callback=None):
 		if len(metrics) != len(self.output_channels)*self.output_multiplicity:
