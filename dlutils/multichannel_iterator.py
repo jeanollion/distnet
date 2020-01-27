@@ -16,6 +16,7 @@ class MultiChannelIterator(IndexArrayIterator):
 				channel_keywords=['/raw'],
 				input_channels=[0],
 				output_channels=[0],
+				weight_map_functions=None,
 				mask_channels=[],
 				output_multiplicity = 1,
 				channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
@@ -50,6 +51,9 @@ class MultiChannelIterator(IndexArrayIterator):
 		if image_data_generators!=None and len(channel_keywords)!=len(image_data_generators):
 			raise ValueError('image_data_generators argument should be either None or an array of same length as channel_keywords')
 		self.image_data_generators=image_data_generators
+		if weight_map_functions is not None:
+			assert len(weight_map_functions)==len(output_channels), "weight map should have same length as output channels"
+		self.weight_map_functions=weight_map_functions
 		self.paths=None
 		self._open_h5py_file()
 		# check that all ds have compatible length between input and output
@@ -106,6 +110,10 @@ class MultiChannelIterator(IndexArrayIterator):
 
 		self._close_h5py_file()
 		self.void_mask_max_proportion = -1
+		if len(mask_channels)>0:
+			self.void_mask_chan = mask_channels[0]
+		else:
+			self.void_mask_chan=-1
 		super().__init__(indexes[-1], batch_size, shuffle, seed)
 
 	def _open_h5py_file(self):
@@ -220,11 +228,17 @@ class MultiChannelIterator(IndexArrayIterator):
 		else:
 			return [batch_by_channel[chan_idx] for chan_idx in self.input_channels]
 
+	def _concat_weight_map(self, batch, output_chan_idx):
+		if self.weight_map_functions is not None and self.weight_map_functions[output_chan_idx] is not None:
+			wm = self.weight_map_functions[output_chan_idx](batch)
+			batch = np.concatenate([batch, wm], -1)
+		return batch
+
 	def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
 		if len(self.output_channels)==1:
-			return batch_by_channel[self.output_channels[0]]
+			return self._concat_weight_map(batch_by_channel[self.output_channels[0]], 0)
 		else:
-			return [batch_by_channel[chan_idx] for chan_idx in self.output_channels]
+			return [self._concat_weight_map(batch_by_channel[chan_idx], i) for i, chan_idx in enumerate(self.output_channels)]
 
 	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array=None, perform_augmentation=True, transfer_aug_param_function=lambda source, dest:copy_geom_tranform_parameters(source, dest)):
 		"""Generate a batch of transformed sample for a given channel
@@ -408,7 +422,7 @@ class MultiChannelIterator(IndexArrayIterator):
 		assert len(self.mask_channels)>0, "cannot compute void mask if no mask channel is defined"
 		if self.h5py_file is None: # for concurency issues: file is open lazyly by each worker
 			self._open_h5py_file()
-		mask_channel = self.mask_channels[0]
+		mask_channel = self.void_mask_chan
 		index_array = np.copy(self.allowed_indexes)
 		index_ds = self._get_ds_idx(index_array)
 		void_masks = np.array([not np.any(self._read_image(mask_channel, ds_idx, im_idx)) for i, (ds_idx, im_idx) in enumerate(zip(index_ds, index_array))])
@@ -421,6 +435,11 @@ class MultiChannelIterator(IndexArrayIterator):
 		except AttributeError:
 			pass
 
+	def __len__(self):
+		if self.void_mask_max_proportion>=0 and not hasattr(self, "void_masks"):
+			self._set_index_array() # redefines n
+		return super().__len__()
+
 	def _set_index_array(self):
 		if self.void_mask_max_proportion>=0: # in case there are too many void masks -> some are randomly removed
 			try:
@@ -429,14 +448,20 @@ class MultiChannelIterator(IndexArrayIterator):
 				self.void_masks = self._get_void_masks()
 				void_masks = self.void_masks
 			bins = np.bincount(void_masks) #[not void ; void]
-			prop = bins[1] / (bins[0]+bins[1])
-			target_void_count = int( (self.void_mask_max_proportion / (1 - self.void_mask_max_proportion) ) * bins[0] )
-			n_rem  = bins[1] - target_void_count
-			if n_rem>0:
-				idx_void = np.flatnonzero(void_masks)
-				to_rem = np.random.choice(idx_void, n_rem, replace=0)
-				index_a = np.delete(self.allowed_indexes, to_rem)
-			else:
+			if len(bins)==2:
+				prop = bins[1] / (bins[0]+bins[1])
+				target_void_count = int( (self.void_mask_max_proportion / (1 - self.void_mask_max_proportion) ) * bins[0] )
+				n_rem  = bins[1] - target_void_count
+				#print("void mask bins: {}, prop: {}, n_rem: {}".format(bins, prop, n_rem))
+				if n_rem>0:
+					idx_void = np.flatnonzero(void_masks)
+					to_rem = np.random.choice(idx_void, n_rem, replace=0)
+					index_a = np.delete(self.allowed_indexes, to_rem)
+					self.n = len(index_a)
+				else:
+					index_a = self.allowed_indexes
+			else:  # only void or only not void
+				#print("void mask bins: ", bins)
 				index_a = self.allowed_indexes
 		else:
 			index_a = self.allowed_indexes

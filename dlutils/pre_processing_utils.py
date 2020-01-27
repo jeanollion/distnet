@@ -12,6 +12,17 @@ try:
 except Exception:
 	pass
 
+def weight_map_mask_class_balance(batch, limit=0):
+    wm = np.ones(shape = batch.shape, dtype=np.float32)
+    n_nonzeros = np.count_nonzero(batch)
+    if n_nonzeros!=0:
+        n_tot = np.prod(batch.shape)
+        valnz = (n_tot - n_nonzeros) / n_nonzeros
+        if limit>0 and valnz>limit:
+            valnz=limit
+        wm[batch!=0]=valnz
+    return wm
+
 def multilabel_edt(label_img, closed_end=True):
     '''
         multilabel edt requires edt package.
