@@ -17,7 +17,7 @@ class MultiChannelIterator(IndexArrayIterator):
 				input_channels=[0],
 				output_channels=[0],
 				weight_map_functions=None,
-				output_postprocessing_functions_functions=None,
+				output_postprocessing_functions=None,
 				mask_channels=[],
 				output_multiplicity = 1,
 				channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
