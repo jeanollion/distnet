@@ -12,28 +12,29 @@ try:
 except Exception:
 	pass
 
-def unet_weigh_map(batch, wo=10, sigma=5, limit=0):
+def unet_weight_map(batch, wo=10, sigma=5, limit=0, dtype=np.float32):
 	if (batch.shape[-1]>1):
-		wms = [unet_weigh_map(batch[...,i:i+1]) for i in range(batch.shape[-1])]
+		wms = [unet_weight_map(batch[...,i:i+1], wo, sigma, limit, dtype) for i in range(batch.shape[-1])]
 		return np.concatenate(wms, axis=-1)
 	else:
-		wm = weight_map_mask_class_balance(batch, limit)
-		for i in range(batch.shape[0]):
-			im = batch[i]
-			labels = np.unique(im)
-			labels = labels[labels!=0]
-			if labels.shape[0]>1:
-				edms=[distance_transform_edt(np.invert(im==l)) for l in labels]
-				edm = np.concatenate(edms, axis=-1)
-				edm = np.partition(edm, 2)[...,:2] # get the 2 min values
-				edm = np.sum(edm, axis=-1, keepdims=True)
-				bckg_wm = 1 + wo * np.exp(- edm * edm / sigma)
-				bckg_subset = im==0
-				wm[i][bckg_subset] = bckg_wm[bckg_subset]
+		wm = weight_map_mask_class_balance(batch, limit, dtype)
+		if wo>0:
+			for i in range(batch.shape[0]):
+				im = batch[i]
+				labels = np.unique(im)
+				labels = labels[labels!=0]
+				if labels.shape[0]>1:
+					edms=[distance_transform_edt(np.invert(im==l)) for l in labels]
+					edm = np.concatenate(edms, axis=-1)
+					edm = np.partition(edm, 1)[...,:2] # get the 2 min values
+					edm = np.sum(edm, axis=-1, keepdims=True)
+					bckg_wm = 1 + wo * np.exp(- edm * edm / sigma)
+					bckg_subset = im==0
+					wm[i][bckg_subset] = bckg_wm[bckg_subset]
 		return wm
 
-def weight_map_mask_class_balance(batch, limit=0):
-    wm = np.ones(shape = batch.shape, dtype=np.float32)
+def weight_map_mask_class_balance(batch, limit=0, dtype=np.float32):
+    wm = np.ones(shape = batch.shape, dtype=dtype)
     n_nonzeros = np.count_nonzero(batch)
     if n_nonzeros!=0:
         n_tot = np.prod(batch.shape)
