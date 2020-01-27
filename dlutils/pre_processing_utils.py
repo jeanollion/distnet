@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
-from scipy.ndimage.morphology import binary_erosion
+from scipy.ndimage.morphology import binary_erosion, distance_transform_edt
 from scipy.ndimage import find_objects
 import random
 from random import uniform, random, randint, getrandbits
@@ -11,6 +11,27 @@ try:
 	import edt
 except Exception:
 	pass
+
+def unet_weigh_map(batch, wo=10, sigma=5, limit=0):
+	if (batch.shape[-1]>1):
+		wms = [unet_weigh_map(batch[...,i:i+1]) for i in range(batch.shape[-1])]
+		return np.concatenate(wms, axis=-1)
+	else:
+		get2min = lambda a : np.partition(a, 2)[...,:2]
+		wm = weight_map_mask_class_balance(batch, limit)
+		for i in range(batch.shape[0]):
+			im = batch[i]
+			labels = np.unique(im)
+			labels = labels[labels!=0]
+			if labels.shape[0]>1:
+				edms=[distance_transform_edt(np.invert(im==l)) for l in labels]
+				edm = np.concatenate(edms, axis=-1)
+				edm = get2min(edm)
+				edm = np.sum(edm, axis=-1, keepdims=True)
+				bckg_wm = 1 + wo * np.exp(-edm*edm/sigma)
+				bckg_subset = im==0
+				wm[i][bckg_subset] = bckg_wm[bckg_subset]
+		return wm
 
 def weight_map_mask_class_balance(batch, limit=0):
     wm = np.ones(shape = batch.shape, dtype=np.float32)
