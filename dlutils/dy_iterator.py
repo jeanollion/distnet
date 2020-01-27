@@ -58,7 +58,7 @@ class DyIterator(TrackingIterator):
 		self.compute_weights=compute_weights
 		assert not compute_edm or compute_edm in ["all", "current"], "invalid value for compute_edm argument"
 		assert not compute_edm or 'edt' in sys.modules, "edt module not installed"
-		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, None, channels_prev, channels_next, mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+		super().__init__(h5py_file_path, channel_keywords, input_channels, output_channels, None, None, channels_prev, channels_next, mask_channels, output_multiplicity, channel_scaling_param, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
 	def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
 		# dy is computed and returned instead of labels & prevLabels

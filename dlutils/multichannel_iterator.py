@@ -17,6 +17,7 @@ class MultiChannelIterator(IndexArrayIterator):
 				input_channels=[0],
 				output_channels=[0],
 				weight_map_functions=None,
+				output_postprocessing_functions_functions=None,
 				mask_channels=[],
 				output_multiplicity = 1,
 				channel_scaling_param=None, #[{'level':1, 'qmin':5, 'qmax':95}],
@@ -54,6 +55,9 @@ class MultiChannelIterator(IndexArrayIterator):
 		if weight_map_functions is not None:
 			assert len(weight_map_functions)==len(output_channels), "weight map should have same length as output channels"
 		self.weight_map_functions=weight_map_functions
+		if output_postprocessing_functions is not None:
+			assert len(output_postprocessing_functions)==len(output_postprocessing_functions), "output postprocessing functions should have same length as output channels"
+		self.output_postprocessing_functions = output_postprocessing_functions
 		self.paths=None
 		self._open_h5py_file()
 		# check that all ds have compatible length between input and output
@@ -228,17 +232,22 @@ class MultiChannelIterator(IndexArrayIterator):
 		else:
 			return [batch_by_channel[chan_idx] for chan_idx in self.input_channels]
 
-	def _concat_weight_map(self, batch, output_chan_idx):
+	def _apply_postprocessing_and_concat_weight_map(self, batch, output_chan_idx):
 		if self.weight_map_functions is not None and self.weight_map_functions[output_chan_idx] is not None:
 			wm = self.weight_map_functions[output_chan_idx](batch)
+		else:
+			wm = None
+		if self.output_postprocessing_functions is not None and self.output_postprocessing_functions[output_chan_idx] is not None:
+			batch = self.output_postprocessing_functions[output_chan_idx](batch)
+		if wm is not None:
 			batch = np.concatenate([batch, wm], -1)
 		return batch
 
 	def _get_output_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
 		if len(self.output_channels)==1:
-			return self._concat_weight_map(batch_by_channel[self.output_channels[0]], 0)
+			return self._apply_postprocessing_and_concat_weight_map(batch_by_channel[self.output_channels[0]], 0)
 		else:
-			return [self._concat_weight_map(batch_by_channel[chan_idx], i) for i, chan_idx in enumerate(self.output_channels)]
+			return [self._apply_postprocessing_and_concat_weight_map(batch_by_channel[chan_idx], i) for i, chan_idx in enumerate(self.output_channels)]
 
 	def _get_batches_of_transformed_samples_by_channel(self, index_ds, index_array, chan_idx, ref_chan_idx, aug_param_array=None, perform_augmentation=True, transfer_aug_param_function=lambda source, dest:copy_geom_tranform_parameters(source, dest)):
 		"""Generate a batch of transformed sample for a given channel

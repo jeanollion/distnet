@@ -15,7 +15,7 @@ class DeltaIterator(TrackingIterator):
         seed=None,
         dtype='float32'):
         assert len(channel_keywords)==3, "Channels must be: raw, regions labels and preious region labels"
-        super().__init__(h5py_file_path, channel_keywords, [0, 1], [2], [True, True, False], [False, False, False], [1, 2], 1, None, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
+        super().__init__(h5py_file_path, channel_keywords, [0, 1], [2], None, None, [True, True, False], [False, False, False], [1, 2], 1, None, group_keyword, image_data_generators, batch_size, shuffle, perform_data_augmentation, seed)
 
     def _get_input_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
         # current frame: remove all cells but no_next
