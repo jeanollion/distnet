@@ -39,6 +39,8 @@ class UnetEncoder():
         if layers_to_concatenate and len(layers_to_concatenate)!=self.n_down+1:
             raise ValueError("{} layers to concatenate are provieded whereas {} are needed".format(len(layers_to_concatenate), self.n_down+1))
         residuals = []
+        if isinstance(input, list):
+            input = Concatenate(axis=3)(flatten_list(input))
         last_input = input
         for layer_idx in range(self.n_down):
             last_input, res = self._encode_layer(last_input, layer_idx, layers_to_concatenate[layer_idx] if layers_to_concatenate else None)
@@ -189,8 +191,6 @@ class UnetDecoder():
     def encode_and_decode(self, input, encoder, layers_to_concatenate=None):
         if encoder.n_down!=self.n_up:
             raise ValueError("encoder has {} enconding blocks whereas decoder has {} decoding blocks".format(enconder.n_down, self.n_up))
-        if isinstance(input, list):
-            input = Concatenate(axis=3)(input)
         if encoder.num_attention_heads>0:
             encoded, residuals, attention_weights = encoder.encode(input, layers_to_concatenate)
             return self.decode(encoded, residuals), input, attention_weights
@@ -287,7 +287,7 @@ def get_unet_plus_plus_model(image_shape, n_contractions, filters=64, max_filter
     n_input_channels = _ensure_multiplicity(n_inputs, n_input_channels)
     filters = _ensure_multiplicity(2, filters)
     max_filters =  _ensure_multiplicity(2, max_filters)
-    encoder = UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, num_attention_heads if use_self_attention else 0, add_attention=False, positional_encoding=True, layer_norm=False, name="encoder_")
+    encoder = UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, num_attention_heads if use_self_attention else 0, add_attention=False, positional_encoding=True, layer_norm=False, name="encoder")
     decoders = [UnetDecoder(c+1, filters[1], max_filters[1], image_shape, anisotropic_conv, n_last_1x1_conv=1, use_1x1_conv_after_concat=True, name="decoder{}_".format(c)) for c in range(n_contractions)]
 
     if n_inputs>1:
@@ -314,11 +314,10 @@ def get_unet_plus_plus_model(image_shape, n_contractions, filters=64, max_filter
         decoded.append(decoders[d_idx].decode(residuals[d_idx+1], all_residuals, True))
         #print("decoder: {}, decoded shapes: {}".format(d_idx,  getshape(decoded[-1])))
     def get_output(layer, rank=0):
-        name = "{}_".format(rank)
         if n_outputs>1:
-            return [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output{}{}".format(name,i))(layer) for i in range(n_outputs)]
+            return [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output{}_{}".format(rank,i))(layer) for i in range(n_outputs)]
         else:
-            return Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output"+name)(layer)
+            return Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output{}".format(rank))(layer)
     outputs = [get_output(d[-1], i) for i,d in enumerate(decoded)]
     return Model(input, outputs)
 
