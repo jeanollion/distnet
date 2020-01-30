@@ -7,7 +7,7 @@ setuptools.setup(
     name="dlutils",
     version="0.0.1",
     author="Jean Ollion",
-    author_email="jean.ollion@polytechnique.edu",
+    author_email="jean.ollion@polytechnique.org",
     description="",
     long_description="",
     long_description_content_type="text/markdown",
