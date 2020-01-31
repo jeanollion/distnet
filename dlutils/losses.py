@@ -28,7 +28,7 @@ def binary_focal_loss(gamma=2., alpha=.25):
         pt_1 = K.clip(pt_1, epsilon, 1. - epsilon)
         pt_0 = K.clip(pt_0, epsilon, 1. - epsilon)
 
-        return -K.sum(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1)) -K.sum((1 - alpha) * K.pow(pt_0, gamma) * K.log(1. - pt_0))
+        return -K.sum(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1), -1) - K.sum((1 - alpha) * K.pow(pt_0, gamma) * K.log(1. - pt_0),-1)
 
     return binary_focal_loss_fixed
 
