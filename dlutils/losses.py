@@ -58,7 +58,7 @@ def categorical_focal_loss(gamma=2., alpha=.25, sparse=True):
         :param y_pred: A tensor resulting from a softmax
         :return: Output tensor.
         """
-
+        # TODO CHECK THIS!!
         # Scale predictions so that the class probas of each sample sum to 1
         y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
 

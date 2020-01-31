@@ -40,13 +40,13 @@ def unet_weight_map(batch, wo=10, sigma=5, limit=0, set_contours_to_zero=False, 
 def weight_map_mask_class_balance(batch, limit=0, dtype=np.float32):
     wm = np.ones(shape = batch.shape, dtype=dtype)
     n_nonzeros = np.count_nonzero(batch)
-    if n_nonzeros!=0:
-        n_tot = np.prod(batch.shape)
+	if n_nonzeros!=0:
+		n_tot = np.prod(batch.shape)
 		p_back = (n_tot - n_nonzeros) / ntot
 		valnz = (n_tot - n_nonzeros) / n_nonzeros
-        if limit>0 and valnz>limit:
-            p_back= limit / (1 + limit)
-        wm[batch!=0]=p_back
+		if limit>0 and valnz>limit:
+			p_back= limit / (1 + limit)
+		wm[batch!=0]=p_back
 		wm[batch==0]=1-p_back
     return wm
 
