@@ -29,7 +29,7 @@ def unet_weight_map(batch, wo=10, sigma=5, limit=0, set_contours_to_zero=False, 
 					edm = np.concatenate(edms, axis=-1)
 					edm = np.partition(edm, 1)[...,:2] # get the 2 min values
 					edm = np.sum(edm, axis=-1, keepdims=True)
-					bckg_wm = 1 + wo * np.exp(- edm * edm / sigma)
+					bckg_wm = 1 + wo * np.exp(- edm * edm / s2)
 					bckg_subset = im==0
 					wm[i][bckg_subset] = bckg_wm[bckg_subset]
 				if labels.shape[0]>0 and set_contours_to_zero:
@@ -42,10 +42,12 @@ def weight_map_mask_class_balance(batch, limit=0, dtype=np.float32):
     n_nonzeros = np.count_nonzero(batch)
     if n_nonzeros!=0:
         n_tot = np.prod(batch.shape)
-        valnz = (n_tot - n_nonzeros) / n_nonzeros
+		p_back = (n_tot - n_nonzeros) / ntot
+		valnz = (n_tot - n_nonzeros) / n_nonzeros
         if limit>0 and valnz>limit:
-            valnz=limit
-        wm[batch!=0]=valnz
+            p_back= limit / (1 + limit)
+        wm[batch!=0]=p_back
+		wm[batch==0]=1-p_back
     return wm
 
 def multilabel_edt(label_img, closed_end=True):
