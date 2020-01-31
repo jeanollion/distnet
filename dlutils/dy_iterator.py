@@ -102,7 +102,7 @@ class DyIterator(TrackingIterator):
 				_compute_dy(labelIms[i,...,2], labelIms[i,...,1], prevLabelIm, dyIm[i,...,1], categories_next[i,...,0] if self.return_categories else None)
 
 		if self.weightmap_channel is not None or self.compute_weights:
-			if self.compute_weights:
+			if self.compute_weights: # TODO use pp function
 				# no prev weights!
 				labelImsWM = labelIms[...,1:]
 				wm = np.ones(shape = labelImsWM.shape, dtype=np.float32)
@@ -112,7 +112,7 @@ class DyIterator(TrackingIterator):
 					valnz = (n_tot - n_nonzeros) / n_nonzeros
 					wm[labelImsWM!=0]=valnz
 					for b,c in itertools.product(range(wm.shape[0]), range(wm.shape[-1])):
-						contours = pp.extractContourMask(labelImsWM[b,...,c])
+						contours = pp.get_contour_mask(labelImsWM[b,...,c])
 						wm[b,...,c][contours] = 0
 			else:
 				wm = batch_by_channel[self.weightmap_channel]
