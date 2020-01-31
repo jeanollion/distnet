@@ -17,6 +17,7 @@ def unet_weight_map(batch, wo=10, sigma=5, limit=0, set_contours_to_zero=False, 
 		wms = [unet_weight_map(batch[...,i:i+1], wo, sigma, limit, dtype) for i in range(batch.shape[-1])]
 		return np.concatenate(wms, axis=-1)
 	else:
+		s2 = sigma * sigma * 2
 		wm = weight_map_mask_class_balance(batch, limit, dtype)
 		if wo>0 or set_contours_to_zero:
 			for i in range(batch.shape[0]):
