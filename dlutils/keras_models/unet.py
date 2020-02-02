@@ -31,10 +31,9 @@ class UnetEncoder():
         if max_filters<=0:
             max_filters = n_filters * 2**n_down
         self.max_filters=max_filters
-        for l in dropout_contraction_levels:
-            assert l<=n_down, "dropout_contraction_level should be <={}".format(n_down)
+        self.dropout_contraction_levels = [l if l>=0 else n_down + l + 1 for l in dropout_contraction_levels]
+        assert all([l>=0 and l<=n_down for l in self.dropout_contraction_levels]), "dropout_contraction_level should be <={}".format(n_down)
         assert len(dropout_contraction_levels)==0 or len(dropout_contraction_levels)==len(dropout_levels), "dropout_contraction_levels & dropout_levels must have same length"
-        self.dropout_contraction_levels=dropout_contraction_levels
         self.dropout_levels = dropout_levels
         for layer_idx in range(n_down + 1): # +1 -> last feature layer
             self._make_layer(layer_idx)
@@ -306,7 +305,7 @@ def get_unet_model(image_shape, n_contractions, filters=64, max_filters=0, n_out
         all_outputs.append(attention_weights)
     return Model(input, flatten_list(all_outputs))
 
-def get_unet_plus_plus_model(image_shape, n_contractions, filters=64, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=True, n_inputs=1, n_input_channels=1, use_self_attention=False, num_attention_heads=1, dropout_contraction_levels=[], dropout_levels=0.2):
+def get_unet_plus_plus_model(image_shape, n_contractions, filters=64, max_filters=0, anisotropic_conv=True, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1, use_self_attention=False, num_attention_heads=1, dropout_contraction_levels=[], dropout_levels=0.2, decoder_contraction_level=[]):
     n_output_channels = _ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = _ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = _ensure_multiplicity(n_inputs, n_input_channels)
@@ -314,7 +313,15 @@ def get_unet_plus_plus_model(image_shape, n_contractions, filters=64, max_filter
     max_filters =  _ensure_multiplicity(2, max_filters)
     dropout_levels = _ensure_multiplicity(len(dropout_contraction_levels), dropout_levels)
     encoder = UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, num_attention_heads if use_self_attention else 0, add_attention=False, positional_encoding=True, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels, name="encoder")
-    decoders = [UnetDecoder(c+1, filters[1], max_filters[1], image_shape, anisotropic_conv, n_last_1x1_conv=1, use_1x1_conv_after_concat=True, name="decoder{}_".format(c)) for c in range(n_contractions)]
+    if decoder_contraction_level is None or len(decoder_contraction_level)==0:
+        decoder_contraction_level = list(range(n_contractions))
+    else:
+        decoder_contraction_level = [l if l>=0 else n_contractions + l for l in decoder_contraction_level]
+        decoder_contraction_level.sort()
+        print(decoder_contraction_level)
+        assert n_contractions-1 in decoder_contraction_level, "last contraction level must be decoded"
+        assert all([l>=0 and l<=n_contractions for l in decoder_contraction_level]), "contraction level should be <={}".format(n_contractions)
+    decoders = [UnetDecoder(c+1, filters[1], max_filters[1], image_shape, anisotropic_conv, n_last_1x1_conv=1, use_1x1_conv_after_concat=True, name="decoder{}".format(c)) for c in decoder_contraction_level]
 
     if n_inputs>1:
         input = [Input(shape = image_shape+(n_input_channels[i],), name="input"+str(i)) for i in range(n_inputs)]
@@ -328,16 +335,18 @@ def get_unet_plus_plus_model(image_shape, n_contractions, filters=64, max_filter
     residuals.append(encoded)
 
     decoded = list()
-    for d_idx, decoder in enumerate(decoders):
+    for i, (d_idx, decoder) in enumerate(zip(decoder_contraction_level, decoders)):
         all_residuals = list()
         for r_idx in range(0, d_idx+1):
             current_residuals = [residuals[r_idx]]
-            for prev_d_idx in range(0, d_idx-r_idx):
-                current_residuals.append(decoded[-(prev_d_idx+1)][-(r_idx+1)])
+            for prev_i in range(i-1, -1, -1):
+                dec = decoded[prev_i]
+                if len(dec)>r_idx: # decoder yields enough residuals
+                    current_residuals.append(dec[-(r_idx+1)])
             all_residuals.append(current_residuals)
             #getshape = lambda l : [getshape(r) if type(r)==list else r.shape for r in l]
             #print("decoder: {}, residual: {}: residual shapes: {}".format(d_idx, r_idx, getshape(current_residuals)))
-        decoded.append(decoders[d_idx].decode(residuals[d_idx+1], all_residuals, True))
+        decoded.append(decoders[i].decode(residuals[d_idx+1], all_residuals, True))
         #print("decoder: {}, decoded shapes: {}".format(d_idx,  getshape(decoded[-1])))
     def get_output(layer, rank=0):
         if n_outputs>1:
