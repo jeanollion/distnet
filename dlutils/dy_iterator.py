@@ -22,7 +22,7 @@ class DyIterator(TrackingIterator):
 		channels_next=[False, False, False, False],
 		return_categories = False,
 		return_labels = False,
-		compute_edm = None, # expected: "current" "all"
+		compute_edm = None, # expected values: "current" "all"
 		compute_weights=False,
 		mask_channels=[1, 2, 3],
 		weightmap_channel = None,
