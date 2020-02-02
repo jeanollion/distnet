@@ -45,10 +45,8 @@ class MultiChannelIterator(IndexArrayIterator):
 			raise ValueError("No input channels set")
 		if (len(input_channels) != len(set(input_channels))):
 			raise ValueError("Duplicated channels in input_channels")
-		if (len(output_channels) != len(set(output_channels))):
-			raise ValueError("Duplicated channels in output_channels")
 		self.input_channels=input_channels
-		self.output_channels=output_channels
+		self.output_channels=output_channels # duplicated output channels allowed because can be modified by a postprocessing function
 		if image_data_generators!=None and len(channel_keywords)!=len(image_data_generators):
 			raise ValueError('image_data_generators argument should be either None or an array of same length as channel_keywords')
 		self.image_data_generators=image_data_generators
@@ -191,16 +189,6 @@ class MultiChannelIterator(IndexArrayIterator):
 
 		if self.output_channels is None or len(self.output_channels)==0:
 			return self._get_input_batch(batch_by_channel, ref_chan_idx, aug_param_array)
-		elif self.input_channels==self.output_channels:
-			batch = self._get_input_batch(batch_by_channel, ref_chan_idx, aug_param_array)
-			if self.output_multiplicity>1:
-				if not isinstance(batch, list):
-					output = [batch] * self.output_multiplicity
-				else:
-					output = batch * self.output_multiplicity
-			else:
-				output = batch
-			return (batch, output)
 		else:
 			input = self._get_input_batch(batch_by_channel, ref_chan_idx, aug_param_array)
 			output = self._get_output_batch(batch_by_channel, ref_chan_idx, aug_param_array)
