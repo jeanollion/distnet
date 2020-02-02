@@ -12,13 +12,13 @@ try:
 except Exception:
 	pass
 
-def unet_weight_map(batch, wo=10, sigma=5, limit=0, set_contours_to_zero=False, dtype=np.float32):
+def unet_weight_map(batch, wo=10, sigma=5, max_background_ratio=0, set_contours_to_zero=False, dtype=np.float32):
 	if (batch.shape[-1]>1):
-		wms = [unet_weight_map(batch[...,i:i+1], wo, sigma, limit, dtype) for i in range(batch.shape[-1])]
+		wms = [unet_weight_map(batch[...,i:i+1], wo, sigma, max_background_ratio, True, dtype) for i in range(batch.shape[-1])]
 		return np.concatenate(wms, axis=-1)
 	else:
 		s2 = sigma * sigma * 2
-		wm = weight_map_mask_class_balance(batch, limit, dtype)
+		wm = weight_map_mask_class_balance(batch, max_background_ratio, True, dtype)
 		if wo>0 or set_contours_to_zero:
 			for i in range(batch.shape[0]):
 				im = batch[i]
@@ -37,17 +37,20 @@ def unet_weight_map(batch, wo=10, sigma=5, limit=0, set_contours_to_zero=False, 
 					wm[i,...,0][contours] = 0
 		return wm
 
-def weight_map_mask_class_balance(batch, limit=0, dtype=np.float32):
+def weight_map_mask_class_balance(batch, max_background_ratio=0, set_background_to_one=False, dtype=np.float32):
 	wm = np.ones(shape = batch.shape, dtype=dtype)
 	n_nonzeros = np.count_nonzero(batch)
 	if n_nonzeros!=0:
 		n_tot = np.prod(batch.shape)
 		p_back = (n_tot - n_nonzeros) / n_tot
-		valnz = (n_tot - n_nonzeros) / n_nonzeros
-		if limit>0 and valnz>limit:
-			p_back = limit / (1 + limit)
-		wm[batch!=0]=p_back
-		wm[batch==0]=1-p_back
+		background_ratio = (n_tot - n_nonzeros) / n_nonzeros
+		if max_background_ratio>0 and background_ratio>max_background_ratio:
+			p_back = max_background_ratio / (1 + max_background_ratio)
+		if set_background_to_one:
+			wm[batch!=0] = p_back / (1 - p_back)
+		else:
+			wm[batch!=0] = p_back
+			wm[batch==0] = 1-p_back
 	return wm
 
 def multilabel_edt(label_img, closed_end=True):
