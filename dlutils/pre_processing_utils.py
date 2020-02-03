@@ -33,7 +33,7 @@ def unet_weight_map(batch, wo=10, sigma=5, max_background_ratio=0, set_contours_
 					bckg_subset = im==0
 					wm[i][bckg_subset] = bckg_wm[bckg_subset]
 				if labels.shape[0]>0 and set_contours_to_zero:
-					contours = get_contour_mask(im[...,0])
+					contours = get_contour_mask(im[...,0], fun=_get_contours_binary_2d)
 					wm[i,...,0][contours] = 0
 		return wm
 
@@ -91,21 +91,54 @@ def binary_erode_labelwise(label_img):
             eroded = binary_erosion(subregion == val, border_value = 1)
             subregion[(subregion == val) *np.logical_not(eroded)] = 0 # erase eroded region only within object
 
-def _getContours(element):
+def _get_contours_2d(element):
     v = element[4]
     if v==0:
         return False
     else:
         for i in range(9):
-            if i!=4 and element[i]!=v:
+            if element[i]!=v:
                 return True
         return False
 
-def get_contour_mask(labeled_image, output=None):
-	assert len(labeled_image.shape)==2,"only valid for 2D images"
+def _get_contours_binary_2d(element):
+    if element[4]==0:
+        return False
+    else:
+        for i in range(9):
+            if element[i]==0:
+                return True
+        return False
+
+def _get_touching_contours(element):
+    v = element[4]
+    if v==0:
+        return False
+    else:
+        for i in range(9):
+            if element[i]!=v and element[i]!=0:
+                return True
+        return False
+
+def get_contour_mask(labeled_image, output=None, fun=_get_contours_2d):
+	shape = labeled_image.shape
+	if len(shape)==3:
+		assert shape[2] == 1, "only valid for 2D images"
+		output = np.zeros(shape=shape, dtype=np.bool_)
+		#output[...,0] =
+		get_contour_mask(labeled_image[...,0], output[...,0], fun)
+		return output
+	elif len(shape)>3:
+		raise ValueError("only valid for 2D images")
 	if output is None:
 		output = np.zeros(shape=labeled_image.shape, dtype=np.bool_)
-	return generic_filter(labeled_image, _getContours, size=3, output=output, mode='constant')
+	return generic_filter(labeled_image, fun, size=3, output=output, mode='constant')
+
+def erase_touching_contours(labeled_image):
+	# TODO other method that erases a line of one pixel instead of 2
+	touching = get_contour_mask(labeled_image, fun = _get_touching_contours)
+	labeled_image[touching] = 0
+	return labeled_image
 
 def sometimes(func, prob=0.5):
     return lambda im:func(im) if random()<prob else im
