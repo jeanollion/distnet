@@ -96,8 +96,8 @@ def _get_contours_2d(element):
     if v==0:
         return False
     else:
-        for i in range(9):
-            if element[i]!=v:
+        for vv in element:
+            if vv!=v:
                 return True
         return False
 
@@ -105,27 +105,26 @@ def _get_contours_binary_2d(element):
     if element[4]==0:
         return False
     else:
-        for i in range(9):
-            if element[i]==0:
+        for vv in element:
+            if vv==0:
                 return True
         return False
 
 def _get_touching_contours(element):
-    v = element[4]
-    if v==0:
-        return False
-    else:
-        for i in range(9):
-            if element[i]!=v and element[i]!=0:
-                return True
-        return False
+	v = element[4]
+	if v==0:
+		return False
+	else:
+		for vv in element:
+			if vv!=v and vv!=0:
+				return True
+		return False
 
 def get_contour_mask(labeled_image, output=None, fun=_get_contours_2d):
 	shape = labeled_image.shape
 	if len(shape)==3:
 		assert shape[2] == 1, "only valid for 2D images"
 		output = np.zeros(shape=shape, dtype=np.bool_)
-		#output[...,0] =
 		get_contour_mask(labeled_image[...,0], output[...,0], fun)
 		return output
 	elif len(shape)>3:
