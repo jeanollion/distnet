@@ -350,9 +350,9 @@ def get_unet_plus_plus_model(image_shape, n_contractions, filters=64, max_filter
         #print("decoder: {}, decoded shapes: {}".format(d_idx,  getshape(decoded[-1])))
     def get_output(layer, rank=0):
         if n_outputs>1:
-            return [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output{}_{}".format(rank,i))(layer) for i in range(n_outputs)]
+            return [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output{}_{}".format(i, rank))(layer) for i in range(n_outputs)]
         else:
-            return Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output{}".format(rank))(layer)
+            return Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output_{}".format(rank))(layer)
     outputs = [get_output(d[-1], i) for i,d in enumerate(decoded)]
     return Model(input, outputs)
 
