@@ -20,7 +20,7 @@ class SelfAttention(Model):
         self.wv = Dense(self.d_model, name=name+"_w")
         self.positional_encoding=positional_encoding
         if positional_encoding:
-            self.pos_embedding = Embedding(self.spatial_dim, d_model, name=name+"pos_enc")
+            self.pos_embedding = Embedding(self.spatial_dim, d_model, name=name+"pos_enc") # TODO test other positional encoding. in particular that encodes X and Y
 
     def call(self, x):
         '''
