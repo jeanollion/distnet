@@ -13,6 +13,7 @@ class MultiHeadSelfAttention(Model):
             adapted from: https://www.tensorflow.org/tutorials/text/transformer
         '''
         super().__init__(name=name)
+        assert num_heads>0, "invalid attention head number"
         self.num_heads = num_heads
         self.depth = depth
         self.d_model = depth * self.num_heads
