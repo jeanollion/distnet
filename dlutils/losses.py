@@ -1,6 +1,7 @@
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras import losses
+from tensorflow.keras.callbacks import Callback
 import numpy as np
 
 def binary_focal_loss(gamma=2., alpha=.25):
@@ -106,8 +107,10 @@ def sum_losses(losses, weights):
     if len(losses)!=len(weights):
         raise ValueError("Weights array should be of same length as loss array")
     def loss_func(y_true, y_pred):
-        loss_values = [loss(y_true, y_pred) * w for loss, w in zip(losses, weights)]
-        return sum(loss_values)
+        res = losses[0](y_true, y_pred) * weights[0]
+        for i in range(1, len(losses)):
+            res = res + losses[i](y_true, y_pred) * weights[i]
+        return res
 
 def weighted_loss_by_category(original_loss_func, weights_list, axis=-1, sparse=True):
     def loss_func(true, pred):
@@ -164,3 +167,81 @@ def pixelwise_weighted_loss(original_loss_func, y_true_channels=None, weight_cha
             loss = tf.expand_dims(loss, -1)
             return loss * weightMap
     return loss_func
+
+def dice_loss(y_true, y_pred, smooth=1):
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    return (2. * intersection + smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + smooth)
+
+def generalized_dice_loss(y_true, y_pred):
+    """generalized dice loss as in https://arxiv.org/abs/1812.07032
+
+    Parameters
+    ----------
+    y_true : type
+        ground truth tensor
+    y_pred : type
+        predicted tensor
+
+    Returns
+    -------
+    type
+        loss tensor
+
+    """
+    epsilon = K.epsilon()
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    y_true_fn = 1 - y_true_f
+    y_pred_fn = 1 - y_pred_f
+    wg = 1 / ( K.square(K.sum(y_true_f)) + epsilon )
+    wb = 1 / ( K.square(K.sum(y_true_fn)) + epsilon )
+    tp = K.sum(y_true_f * y_pred_f)
+    tn = K.sum(y_true_fn * y_pred_fn)
+    return 1 - 2 * (wg * tp + wb * tn + epsilon) / ( wg * ( K.sum(y_true_f) + K.sum(y_pred_f) ) + wb * ( K.sum(y_true_fn) + K.sum(y_pred_fn) ) + epsilon )
+
+def boundary_gdice_loss(alpha):
+    """Mixed generalized_dice and boundary loss function as in  https://arxiv.org/abs/1812.07032
+
+    Parameters
+    ----------
+    alpha : type
+        number / Keras variable in range [0,1] importance given to boundary loss over generalized dice
+
+    Returns
+    -------
+    type
+        loss function that inputs:
+        y_true : type
+            ground truth tensor, concatenated with level sel (distance map from bounds, negative inside and positive outside)
+        y_pred : type
+            predicted tensor
+
+    """
+    def loss_fun(y_true, y_pred):
+        channels = tf.shape(y_true)[-1]
+        mid = channels // 2
+        levelset = y_true[...,mid:]
+        y_true = y_true[...,0:mid]
+        gdl = generalized_dice_loss(y_true, y_pred)
+        bl = K.sum(levelset * y_pred)
+        return  alpha * bl + (1 - alpha) * gdl
+    return loss_fun
+
+## to decay alpha value during trainig as in https://arxiv.org/abs/1812.07032
+#define current_alpha = K.variable(0.)
+#set the loss : boundary_gdice_loss(current_alpha)
+#add the callback EpochNumberCallback(current_alpha, fun=c_epoch_to_alpha(n_epochs))
+#remember to set pre_processing_utils.level_set as weightmap function
+def c_epoch_to_alpha(total_epochs):
+    return lambda current_epoch : 1 - current_epoch / total_epochs
+
+class EpochNumberCallback(Callback):
+    def __init__(self, current_value, fun=lambda v:v):
+        self.current_value = current_value
+        self.fun = fun
+
+    def on_epoch_end(self, epoch, logs={}):
+        K.set_value(self.current_value, self.fun(epoch))
+        print("alpha: ", K.get_value(self.current_value))

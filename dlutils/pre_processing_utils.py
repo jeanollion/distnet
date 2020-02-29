@@ -12,6 +12,21 @@ try:
 except Exception:
 	pass
 
+def batch_wise_fun(fun):
+	return lambda batch : np.stack([fun(batch[i]) for i in range(batch.shape[0])], 0)
+
+def apply_and_stack_channel(*funcs):
+	return lambda batch : np.concatenate([fun(batch) for fun in funcs], -1)
+
+def identity(batch):
+	return batch
+
+def level_set(label_img):
+	if not np.any(label_img): # empty image
+		return np.zeros_like(label_img, dtype=np.float64)
+	ls = distance_transform_edt(label_img) # edm inside
+	return distance_transform_edt(np.where(label_img, 0, 1)) - ls # edm outside - edm inside
+	
 def unet_weight_map(batch, wo=10, sigma=5, max_background_ratio=0, set_contours_to_zero=False, dtype=np.float32):
 	if (batch.shape[-1]>1):
 		wms = [unet_weight_map(batch[...,i:i+1], wo, sigma, max_background_ratio, True, dtype) for i in range(batch.shape[-1])]
@@ -70,7 +85,7 @@ def multilabel_edt(label_img, closed_end=True):
     return label_img
 
 def binarize(img):
-    return np.where(img>0, 1, 0)
+    return np.where(img, 1, 0)
 
 def binary_erode_labelwise(label_img):
     '''
