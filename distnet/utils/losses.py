@@ -204,14 +204,15 @@ def soft_generalized_dice_loss(batch_mean = False, square_weights = True, sparse
     """
     def loss_fun(y_true, y_pred):
         if sparse:
+            y_true = K.cast(y_true[...,0], "int32")
             y_true = K.one_hot(y_true, K.shape(y_pred)[class_axis])
-        if batch_mean:
-            sum_axis = [0, 1, 2] # todo compute this automatically
-        else:
-            sum_axis = [1, 2]
+        sum_axis = [1, 2] # todo compute this automatically
         inter = K.sum(y_true * y_pred, sum_axis)
         tv = K.sum(y_true, sum_axis)
         pv = K.sum(y_true, sum_axis)
+        if batch_mean:
+            tv = K.sum(y_true, 0, keepdims=True)
+            pv = K.sum(y_true, 0, keepdims=True)
         if square_weights:
             w = 1. / K.square(tv)
         else:

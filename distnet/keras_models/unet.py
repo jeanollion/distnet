@@ -254,6 +254,9 @@ def concat_and_conv(inputs, n_filters, layer_name):
     concat = Concatenate(axis=3, name = layer_name+"_concat")(inputs)
     return Conv2D(n_filters, (1, 1), padding='same', activation='relu', kernel_initializer = 'he_normal', name = layer_name+"_conv1x1")(concat)
 
+def get_distnet_model(image_shape=(256, 32), n_contractions=4, filters=128, max_filters=0, n_outputs=3, n_output_channels=[1, 4, 2], out_activations=["linear", "softmax", "linear"], n_inputs=1, n_input_channels=2, num_attention_heads=1, positional_encoding=True, output_attention_weights=False, n_1x1_conv_after_decoder=1, dropout_contraction_levels=[-1], dropout_levels=0.2):
+    return get_unet_model(image_shape, n_contractions, filters, max_filters=max_filters, n_outputs=n_outputs, n_output_channels=n_output_channels, out_activations=out_activations, n_inputs=n_inputs, n_input_channels=n_input_channels, num_attention_heads=num_attention_heads, output_attention_weights=output_attention_weights, n_1x1_conv_after_decoder=n_1x1_conv_after_decoder, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels)
+
 def get_unet_model(image_shape, n_contractions, filters=64, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=False, n_inputs=1, n_input_channels=1, use_self_attention=False, add_attention=False, num_attention_heads=1, positional_encoding=True, output_attention_weights=False, n_conv_layer_levels_encoder=2, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, omit_skip_connection_levels=[], n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True, dropout_contraction_levels=[], dropout_levels=0.2):
     n_output_channels = _ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = _ensure_multiplicity(n_outputs, out_activations)
