@@ -1,7 +1,7 @@
 from keras_preprocessing.image import ImageDataGenerator
 import numpy as np
 import scipy.ndimage as ndi
-import dlutils.pre_processing_utils as pp
+import distnet.utils.pre_processing as pp
 
 class ImageDataGeneratorSwim(ImageDataGenerator):
     def __init__(self, swim_params=None, swim_params_prev=None, gap_index=True, normalize_intensity=False, **kwargs):
