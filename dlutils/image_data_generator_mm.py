@@ -294,37 +294,3 @@ def forbid_transformations_if_object_touching_borders(aug_param, mask_img, close
         if has_object_up or has_object_down:
             if zx>1:
                 aug_param['zx'] = 1
-
-def transfer_illumination_aug_parameters(source, dest):
-    if "vmin" in source and "vmax" in source:
-        dest["vmin"] = source["vmin"]
-        dest["vmax"] = source["vmax"]
-    else:
-        if "vmin" in dest:
-            del dest["vmin"]
-        if "vmax" in dest:
-            del des["vmax"]
-    if "poisson_noise" in source:
-        dest["poisson_noise"] = source.get("poisson_noise", 0)
-    elif "poisson_noise" in dest:
-        del dest["poisson_noise"]
-    if "speckle_noise" in source:
-        dest["speckle_noise"] = source.get("speckle_noise", 0)
-    elif "speckle_noise" in dest:
-        del dest["speckle_noise"]
-    if "gaussian_noise" in source:
-        dest["gaussian_noise"] = source.get("gaussian_noise", 0)
-    elif "gaussian_noise" in dest:
-        del dest["gaussian_noise"]
-    if "gaussian_blur" in source:
-        dest["gaussian_blur"] = source.get("gaussian_blur", 0)
-    elif "gaussian_blur" in dest:
-        del dest["gaussian_blur"]
-    if "histogram_voodoo_target_points" in source:
-        dest["histogram_voodoo_target_points"] = copy.copy(source["histogram_voodoo_target_points"])
-    elif "histogram_voodoo_target_points" in dest:
-        del dest["histogram_voodoo_target_points"]
-    if "illumination_voodoo_target_points" in source:
-        dest["illumination_voodoo_target_points"] = copy.copy(source["illumination_voodoo_target_points"])
-    elif "illumination_voodoo_target_points" in dest:
-        del dest["illumination_voodoo_target_points"]

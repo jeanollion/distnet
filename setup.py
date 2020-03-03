@@ -9,15 +9,15 @@ setuptools.setup(
     author="Jean Ollion",
     author_email="jean.ollion@polytechnique.org",
     description="",
-    long_description="",
+    long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/jeanollion/dlutils",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: GNU GPLv3",
         "Operating System :: OS Independent",
     ],
     python_requires='>=3',
-    install_requires=['h5py>=2.9', 'numpy', 'scipy', 'scikit-learn', 'keras']
+    install_requires=['numpy', 'scipy', 'scikit-learn', 'tensorflow']
 )

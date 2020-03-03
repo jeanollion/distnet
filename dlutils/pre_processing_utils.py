@@ -21,14 +21,47 @@ def apply_and_stack_channel(*funcs):
 def identity(batch):
 	return batch
 
-def level_set(label_img):
+def level_set(label_img, max_distance=None, dtype=np.float32):
 	if not np.any(label_img): # empty image
-		return np.zeros_like(label_img, dtype=np.float64)
-	ls = distance_transform_edt(label_img) # edm inside
-	return distance_transform_edt(np.where(label_img, 0, 1)) - ls # edm outside - edm inside
-	
+		baseline = np.ones_like(label_img, dtype=dtype)
+		if max_distance is not None:
+			return baseline * max_distance # base line = max possible distance value
+		else:
+			return baseline * max(label_img.shape)
+	inside = distance_transform_edt(label_img).astype(dtype, copy=False) # edm inside
+	outside = distance_transform_edt(np.where(label_img, False, True)).astype(dtype, copy=False)
+	if max_distance is not None:
+		inside[inside<-max_distance] = -max_distance
+		outside[outside>max_distance] = max_distance
+	return outside - inside
+
 def unet_weight_map(batch, wo=10, sigma=5, max_background_ratio=0, set_contours_to_zero=False, dtype=np.float32):
-	if (batch.shape[-1]>1):
+	"""Implementation of Unet weight map as in Ronneberger, O., Fischer, P., & Brox, T. (2015, October).
+	U-net: Convolutional networks for biomedical image segmentation.
+
+	Parameters
+	----------
+	batch : type
+		ND array of shape (batch, Y, X, nchan)  of labeld images
+		if nchan>1 function is applied separately on each channel
+	wo : float
+		cf Unet paper
+	sigma : float
+		cf Unet paper
+	max_background_ratio : bool
+		limits the ratio  (background volume / foreground volume).
+		useful when foreground is rare, in which case the weight of forground will be: max_background_ratio / (1 + max_background_ratio)
+		if 0, not limit
+	set_contours_to_zero : bool
+		if true, weight of object contours is set to zero
+	dtype : numpy.dtype
+		weight map data type
+	Returns
+	-------
+	type
+		numpy nd array of same shape as batch
+	"""
+	if batch.shape[-1]>1:
 		wms = [unet_weight_map(batch[...,i:i+1], wo, sigma, max_background_ratio, True, dtype) for i in range(batch.shape[-1])]
 		return np.concatenate(wms, axis=-1)
 	else:
@@ -54,6 +87,8 @@ def unet_weight_map(batch, wo=10, sigma=5, max_background_ratio=0, set_contours_
 
 def weight_map_mask_class_balance(batch, max_background_ratio=0, set_background_to_one=False, dtype=np.float32):
 	wm = np.ones(shape = batch.shape, dtype=dtype)
+	if max_background_ratio<0:
+		return wm
 	n_nonzeros = np.count_nonzero(batch)
 	if n_nonzeros!=0:
 		n_tot = np.prod(batch.shape)
@@ -84,8 +119,8 @@ def multilabel_edt(label_img, closed_end=True):
         label_img = np.expand_dims(label_img, -1)
     return label_img
 
-def binarize(img):
-    return np.where(img, 1, 0)
+def binarize(img, dtype=np.float32):
+	return np.where(img, dtype(1), dtype(0))
 
 def binary_erode_labelwise(label_img):
     '''
