@@ -1,8 +1,9 @@
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras import losses
-from tensorflow.keras.callbacks import Callback
 import numpy as np
+from .lovasz_losses_tf import lovasz_hinge, lovasz_softmax
+from .helpers import convert_probabilities_to_logits, ensure_multiplicity
 
 def mother_machine_mask(shape=(256, 32), mask_size=40, lower_end_only=True, dtype=np.float32):
     mask = np.ones(shape=(1,)+shape, dtype=dtype) #+(1,)
@@ -26,15 +27,17 @@ def ssim_loss(y_true, y_pred, max_val = 256):
     SSIM = tf.image.ssim(y_true, y_pred, max_val=max_val)
     return 1 - (1 + SSIM ) * 0.5
 
-def sum_losses(losses, weights, reshape_axis=None):
-    assert len(losses)==len(weights), "Weights array should be of same length as loss array"
+def mix_losses(losses, weights, reshape_axis_list=None):
+    assert len(losses)==len(weights), "Weigh_ts array should be of same length as loss array"
+    reshape_axis_list = ensure_multiplicity(len(losses), reshape_axis_list)
     def loss_func(y_true, y_pred):
         for i in range(0, len(losses)):
             loss = losses[i](y_true, y_pred) * weights[i]
-            if reshape_axis is not None:
-                loss = K.reshape(loss, reshape_axis)
+            if reshape_axis_list[i] is not None:
+                loss = K.reshape(loss, reshape_axis_list[i])
             res = loss if i==0 else res + loss
         return res
+    return loss_func
 
 def weighted_loss_by_category(original_loss_func, weights_list, axis=-1, sparse=True):
     def loss_func(true, pred):
@@ -102,7 +105,7 @@ def pixelwise_weighted_loss(original_loss_func, y_true_channels=None, weight_cha
                 return loss
     return loss_func
 
-def binary_dice_coeff(y_true, y_pred, smooth=1e-10, batch_mean=False, square_norm=False, include_background=False):
+def binary_dice_coeff(y_true, y_pred, smooth=1e-10, batch_mean=False, square_norm=False):
     batchSize = K.shape(y_true)[0]
     t = K.reshape(y_true, shape=(batchSize, -1))
     p = K.reshape(y_pred, shape=(batchSize, -1))
@@ -115,57 +118,32 @@ def binary_dice_coeff(y_true, y_pred, smooth=1e-10, batch_mean=False, square_nor
     if square_norm:
         tv = K.square(tv)
         pv = K.square(pv)
-    if include_background:
-        tb = 1 - t
-        pb = 1 - p
-        tbv = K.sum(tb, -1)
-        pbv = K.sum(pb, -1)
-        if square_norm:
-            tbv = K.square(tbv)
-            pbv = K.square(pbv)
-            if batch_mean:
-                tbv = K.mean(tbv, 0, keepdims=True)
-                pbv = K.mean(pbv, 0, keepdims=True)
-        tn = K.sum(tb * pb, -1)
-        return 0.5 * (tp + smooth) / ( 0.5 * (tv + pv) + smooth) + 0.5 * (tn + smooth) / ( 0.5 * (tbv + pbv) + smooth)
     return (tp + smooth) / ( 0.5 * (tv + pv) + smooth)
 
-def binary_dice_loss(smooth=1e-10, batch_mean=False, square_norm=False, include_background=False):
-    return lambda y_true, y_pred : 1 - binary_dice_coeff(y_true, y_pred, smooth, batch_mean, square_norm, include_background)
+def binary_dice_loss(smooth=1e-10, batch_mean=False, square_norm=False):
+    return lambda y_true, y_pred : 1 - binary_dice_coeff(y_true, y_pred, smooth, batch_mean, square_norm)
 
-def binary_generalized_dice_loss(batch_mean=False, square_weights = True, weight_map=False):
+def soft_dice_loss(smooth=1e-10, batch_mean=False, square_norm=False, sparse=True):
+    def loss_fun(y_true, y_pred):
+        if not sparse:
+            y_true = y_true[...,-1:]
+        return binary_dice_loss(smooth=smooth, batch_mean=batch_mean, square_norm=square_norm)(y_true, y_pred[...,-1:])
+    return loss_fun
+
+def binary_generalized_dice_loss(batch_mean=False, square_weights = True):
     def loss_fun(y_true, y_pred):
         tshape = K.shape(y_true)
         batchSize = tshape[0]
-        if weight_map: # y_true contains a weight map
-            channels = tshape[-1]
-            mid = channels // 2
-            weightMap = y_true[...,mid:]
-            y_true = y_true[...,0:mid]
-        else :
-            weightMap = None
-
         t = K.reshape(y_true, shape=(batchSize, -1))
         p = K.reshape(y_pred, shape=(batchSize, -1))
-        if weight_map:
-            weightMap = K.reshape(weightMap, shape=(batchSize, -1))
-
         tb = 1 - t
         pb = 1 - p
-        if weight_map:
-            tp = K.sum(t * p * weightMap, -1)
-            tn = K.sum(tb * pb * weightMap, -1)
-            tv = K.sum(t * weightMap, -1)
-            pv = K.sum(p * weightMap, -1)
-            tbv = K.sum(tb * weightMap, -1)
-            pbv = K.sum(pb * weightMap, -1)
-        else:
-            tp = K.sum(t * p, -1)
-            tn = K.sum(tb * pb, -1)
-            tv = K.sum(t, -1)
-            pv = K.sum(p, -1)
-            tbv = K.sum(tb, -1)
-            pbv = K.sum(pb, -1)
+        tp = K.sum(t * p, -1)
+        tn = K.sum(tb * pb, -1)
+        tv = K.sum(t, -1)
+        pv = K.sum(p, -1)
+        tbv = K.sum(tb, -1)
+        pbv = K.sum(pb, -1)
         if batch_mean:
             tv = K.mean(tv, 0, keepdims=True)
             pv = K.mean(pv, 0, keepdims=True)
@@ -179,16 +157,16 @@ def binary_generalized_dice_loss(batch_mean=False, square_weights = True, weight
             wb = 1. / tbv
         w = tf.where(tf.math.is_inf(w), K.ones_like(w), w) # regularize 0 div
         wb = tf.where(tf.math.is_inf(wb), K.ones_like(wb), wb)
-        return 1 - 2 * ( w * tp + wb * tn ) / ( w * ( tv + pv ) + wb * ( tbv + pbv ) )
+        return 1 - ( w * tp + wb * tn ) / ( 0.5 * w * ( tv + pv ) + 0.5 * wb * ( tbv + pbv ) )
     return loss_fun
 
-def soft_generalized_dice_loss(batch_mean = False, square_weights = True, sparse = True):
+def soft_generalized_dice_loss(batch_mean = False, square_weights = True, sparse = True, exclude_background=False, spatial_dim_axes=[1, 2]):
     """ Generalised Dice Loss function defined in
         Sudre, C. et. al. (2017) Generalised Dice overlap as a deep learning
         loss function for highly unbalanced segmentations. DLMIA 2017
 
         TF1x implementation : https://github.com/NifTK/NiftyNet/blob/dev/niftynet/layer/loss_segmentation.py
-        Supposes class axis = -1
+        Assumes class axis = -1
 
     Parameters
     ----------
@@ -208,11 +186,13 @@ def soft_generalized_dice_loss(batch_mean = False, square_weights = True, sparse
     def loss_fun(y_true, y_pred):
         if sparse:
             y_true = K.cast(y_true[...,0], "int32")
-            y_true = K.one_hot(y_true, K.shape(y_pred)[class_axis])
-        sum_axis = [1, 2] # todo compute this automatically
-        inter = K.sum(y_true * y_pred, sum_axis)
-        tv = K.sum(y_true, sum_axis)
-        pv = K.sum(y_true, sum_axis)
+            y_true = K.one_hot(y_true, K.shape(y_pred)[-1])
+        if exclude_background:
+            y_true = y_true[...,1:]
+            y_pred = y_pred[...,1:]
+        inter = K.sum(y_true * y_pred, spatial_dim_axes)
+        tv = K.sum(y_true, spatial_dim_axes)
+        pv = K.sum(y_true, spatial_dim_axes)
         if batch_mean:
             tv = K.mean(tv, 0, keepdims=True)
             pv = K.mean(pv, 0, keepdims=True)
@@ -220,9 +200,8 @@ def soft_generalized_dice_loss(batch_mean = False, square_weights = True, sparse
             w = 1. / K.square(tv)
         else:
             w = 1. / tv
-        w = tf.where(tf.math.is_inf(w), K.ones_like(w), w) # regularize 0 div by ones ie max weight
-        numerator = K.sum(w * inter, -1)
-        return 1 - 2 * numerator / K.sum(w * (tv + pv), -1)
+        w = tf.where(tf.math.is_inf(w), K.ones_like(w), w) # regularize 0 div by zero
+        return 1 - (K.sum(w * inter, -1) + 1e-10) / (K.sum(w * 0.5 * (tv + pv), -1) + 1e-10) # sum for each class
     return loss_fun
 
 def binary_tversky_loss(alpha=0.3, beta=0.7, smooth=1e-7, batch_mean=False):
@@ -243,22 +222,24 @@ def binary_tversky_loss(alpha=0.3, beta=0.7, smooth=1e-7, batch_mean=False):
     Returns
     -------
     type
-        Description of returned object.
+        loss function
 
     """
     def loss_fun(y_true, y_pred):
         batchSize = K.shape(y_true)[0]
-        if batch_mean:
-            y_true_f = K.flatten(y_true) * (1. / batchSize)
-            y_pred_f = K.flatten(y_true) * (1. / batchSize)
-        else:
-            y_true_f = K.reshape(y_true, shape=(batchSize, -1))
-            y_pred_f = K.reshape(y_pred, shape=(batchSize, -1))
+        t = K.reshape(y_true, shape=(batchSize, -1))
+        p = K.reshape(y_pred, shape=(batchSize, -1))
 
-        tp = K.sum(y_true_f * y_pred_f, -1)
-        fp = K.sum((1 - y_true_f) * y_pred_f, -1)
-        fn = K.sum(y_true_f * (1 - y_pred_f), -1)
-        return 1 - (tp + smooth) / (tp + alpha * fp + beta * fn + smooth)
+        tp = K.sum(t * p, -1)
+        fp = K.sum((1 - t) * p, -1)
+        fn = K.sum(t * (1 - p), -1)
+        if batch_mean:
+            fp = K.mean(fp, 0, keepdims=True)
+            fn = K.mean(fn, 0, keepdims=True)
+            tpm = K.mean(tp, 0, keepdims=True)
+        else:
+            tpm = tp
+        return 1 - (tp + smooth) / (tpm + alpha * fp + beta * fn + smooth)
     return loss_fun
 
 def boundary_regional_loss(alpha, regional_loss, mul_coeff=1, y_true_channels=None, levelset_channels=None):
@@ -297,22 +278,21 @@ def boundary_regional_loss(alpha, regional_loss, mul_coeff=1, y_true_channels=No
         return  alpha * rl + (1 - alpha) * bl
     return loss_fun
 
-## to decay alpha value during trainig as in https://arxiv.org/abs/1812.07032
-#define current_alpha = K.variable(0.)
-#set the loss : boundary_regional_loss(current_alpha, regional)
-#add the callback EpochNumberCallback(current_alpha, fun=epoch_to_alpha(n_epochs))
-#remember to set pre_processing.level_set as weightmap function
-def epoch_to_alpha(total_epochs, minimal_value=0.01):
-    return lambda current_epoch : max(minimal_value, 1 - (current_epoch + 1) / total_epochs)
+def binary_lovasz_loss(from_logits = False, per_image = False, ignore=None):
+    def loss_fun(yt, yp):
+        if not from_logits:
+            yp = convert_probabilities_to_logits(yp)
+        return lovasz_hinge(logits=yp, labels=yt, per_image=per_image, ignore=ignore)
+    return loss_fun
 
-class EpochNumberCallback(Callback):
-    def __init__(self, current_value, fun=lambda v:v):
-        self.current_value = current_value
-        self.fun = fun
-
-    def on_epoch_end(self, epoch, logs={}):
-        K.set_value(self.current_value, self.fun(epoch))
-
+def soft_lovasz_loss(sparse=True, per_image=False, classes='present', ignore=None):
+    def loss_fun(yt, yp):
+        if not sparse:
+            yt = K.argmax(yt, -1)
+        else :
+            yt = K.squeeze(yt, -1)
+        return lovasz_softmax(probas=yp, labels=yt, per_image=per_image, classes=classes, ignore=ignore)
+    return loss_fun
 # segmetation loss keras: https://github.com/NifTK/NiftyNet/blob/dev/niftynet/layer/loss_segmentation.py
 #focal loss : pip install focal-loss
 #from focal_loss import binary_focal_loss
