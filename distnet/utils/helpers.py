@@ -154,13 +154,15 @@ def export_model_graph(model, outdir, filename="saved_model.pb", input_names=Non
 def export_model_bundle(model, outdir, overwrite=False):
     outputs = dict(zip([out.op.name for out in model.outputs], model.outputs))
     inputs = dict(zip([input.op.name for input in model.inputs], model.inputs))
+    print("inputs: {}, outputs: {}".format(inputs, outputs))
     if overwrite:
         try:
             shutil.rmtree(outdir)
         except:
             pass
-    tf.saved_model.simple_save(K.get_session(), export_dir=outdir, inputs=inputs, outputs=outputs)
-    print("inputs: {}, outputs: {}".format(inputs, outputs))
+    tf.saved_model.simple_save(K.get_session(), export_dir=outdir, inputs=inputs, outputs=outputs) # versions 1.13 - 1.15
+    #tf.saved_model.save(model, export_dir=outdir) # version >=1.15
+
 
 def evaluate_model(iterator, model, metrics, metric_names, xp_idx_in_path=2, position_idx_in_path=3, progress_callback=None):
     try:
