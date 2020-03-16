@@ -9,6 +9,12 @@ import scipy.ndimage as ndi
 
 class ImageDataGeneratorMM(ImageDataGenerator):
     def __init__(self, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, bacteria_swim_distance=50, bacteria_swim_min_gap=3, closed_end=True, **kwargs):
+        if width_zoom_range is None:
+            width_zoom_range=0
+        if height_zoom_range is None:
+            height_zoom_range=0
+        if gaussian_blur_range is None:
+            gaussian_blur_range=0
         if width_zoom_range!=0. or height_zoom_range!=0.:
             kwargs["zoom_range"] = 0.
             if np.isscalar(width_zoom_range):

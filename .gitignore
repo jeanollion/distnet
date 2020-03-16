@@ -2,4 +2,6 @@
 /**/.ipynb_checkpoints/
 test.py
 testCurrent.py
+convert_h5_to_tf.py
+evaluate_model.py
 *.ipynb
