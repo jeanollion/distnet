@@ -8,7 +8,7 @@ import copy
 import scipy.ndimage as ndi
 
 class ImageDataGeneratorMM(ImageDataGenerator):
-    def __init__(self, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, bacteria_swim_distance=50, bacteria_swim_min_gap=3, closed_end=True, **kwargs):
+    def __init__(self, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, min_histogram_to_zero=False, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, bacteria_swim_distance=50, bacteria_swim_min_gap=3, closed_end=True, **kwargs):
         if width_zoom_range is None:
             width_zoom_range=0
         if height_zoom_range is None:
@@ -41,6 +41,7 @@ class ImageDataGeneratorMM(ImageDataGenerator):
         self.max_zoom_aspectratio=max_zoom_aspectratio
         self.min_zoom_aspectratio=min_zoom_aspectratio
         self.min_histogram_range=min_histogram_range
+        self.min_histogram_to_zero=min_histogram_to_zero
         self.noise_intensity=noise_intensity
         if np.isscalar(gaussian_blur_range):
             self.gaussian_blur_range=[gaussian_blur_range, gaussian_blur_range]
@@ -132,9 +133,13 @@ class ImageDataGeneratorMM(ImageDataGenerator):
         # illumination parameters
         if self.perform_illumination_augmentation:
             if self.min_histogram_range<1:
-                vmin, vmax = pp.compute_histogram_range(self.min_histogram_range)
-                params["vmin"] = vmin
-                params["vmax"] = vmax
+                if self.min_histogram_to_zero:
+                    params["vmin"] = 0
+                    params["vmax"] = uniform(self.min_histogram_range, 1)
+                else:
+                    vmin, vmax = pp.compute_histogram_range(self.min_histogram_range)
+                    params["vmin"] = vmin
+                    params["vmax"] = vmax
             else:
                 params["vmin"] = 0
                 params["vmax"] = 1
