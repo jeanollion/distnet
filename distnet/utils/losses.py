@@ -23,9 +23,11 @@ def masked_loss(original_loss_func, mask):
         return loss
     return loss_func
 
-def ssim_loss(y_true, y_pred, max_val = 256):
-    SSIM = tf.image.ssim(y_true, y_pred, max_val=max_val)
-    return 1 - (1 + SSIM ) * 0.5
+def ssim_loss(max_val = 1, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03):
+    def loss_fun(y_true, y_pred):
+        SSIM = tf.image.ssim(y_true, y_pred, max_val=max_val, filter_size=filter_size, filter_sigma=filter_sigma, k1=k1, k2=k2)
+        return 1 - (1 + SSIM ) * 0.5
+    return loss_fun
 
 def mix_losses(losses, weights, reshape_axis_list=None):
     assert len(losses)==len(weights), "Weigh_ts array should be of same length as loss array"
