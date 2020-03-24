@@ -20,7 +20,7 @@ class UnetEncoder():
         if image_shape is not None:
             min_dim = min(image_shape[0], image_shape[1]) if image_shape[0] is not None and image_shape[1] is not None else image_shape[0] if image_shape[0] is not None else image_shape[1] if image_shape[1] is not None else None
             if min_dim is not None:
-                assert min_dim/2**n_down<1, "too many down convolutions. minimal dimension is {}, number of convlution is {} shape in minimal dimension would be {}".format(min_dim, n_down, min_dim/2**n_down)
+                assert min_dim/2**n_down>=1, "too many down convolutions. minimal dimension is {}, number of convlution is {} shape in minimal dimension would be {}".format(min_dim, n_down, min_dim/2**n_down)
         self.image_shape = image_shape
         self.name=name
         self.layers=[]

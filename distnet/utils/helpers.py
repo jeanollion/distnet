@@ -200,3 +200,20 @@ def displayProgressBar(max): # this progress bar is compatible with google colab
         currentProgress[0]+=1
         out.update(progress(currentProgress[0]))
     return callback
+
+def predict_average_flip(model, batch, list_axis=[1, 2, (1,2)]):
+    if not isinstance(list_axis, list):
+        list_axis = [list_axis]
+    if isinstance(batch, list):
+        new_batch = [_concat_with_flips(b) for b in batch]
+    else:
+        new_batch = _concat_with_flips(batch)
+    prediction_batch = model.predict(new_batch)
+    prediction_split = np.split(prediction_batch, len(list_axis)+1, axis=0)
+    for i in range(len(list_axis)):
+        prediction_split[i+1] = np.flip(prediction_split[i+1], axis=list_axis[i])
+    return np.mean(prediction_split, axis=0)
+
+def _concat_with_flips(batch, list_axis=[1, 2, (1,2)]):
+    flips = [np.flip(batch, axis=ax) for ax in list_axis]
+    return np.concatenate([batch]+flips, axis=0)
