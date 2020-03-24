@@ -1,5 +1,7 @@
 # DistNet: Deep Tracking by displacement regression: application to bacteria growing in the __Mother Machine__
 
+[Link to preprint](https://arxiv.org/abs/2003.07790)
+
 This repo contains sources for:
 - Distnet model keras/tensorflow implementation (link to pre-print). Tu use: `disnet.keras_models.get_distnet_model()`
 - Flexible keras unet implementation / unet++ implementatoin. See: `disnet.keras_models.unet.py`
