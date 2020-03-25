@@ -132,7 +132,7 @@ class ImageDataGeneratorMM(ImageDataGenerator):
 
         # illumination parameters
         if self.perform_illumination_augmentation:
-            if self.min_histogram_range<1:
+            if self.min_histogram_range<1 and self.min_histogram_range>0:
                 if self.min_histogram_to_zero:
                     params["vmin"] = 0
                     params["vmax"] = uniform(self.min_histogram_range, 1)
@@ -140,7 +140,7 @@ class ImageDataGeneratorMM(ImageDataGenerator):
                     vmin, vmax = pp.compute_histogram_range(self.min_histogram_range)
                     params["vmin"] = vmin
                     params["vmax"] = vmax
-            else:
+            elif self.min_histogram_range==1:
                 params["vmin"] = 0
                 params["vmax"] = 1
             if self.noise_intensity>0:
