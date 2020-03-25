@@ -163,7 +163,7 @@ class UnetEncoder():
         return min(self.n_filters * 2**layer_idx, self.max_filters)
 
 class UnetDecoder():
-    def __init__(self, n_up, n_filters, max_filters=0, image_shape=None, anisotropic_conv=False, use_1x1_conv_after_concat=True, n_last_1x1_conv=0, omit_skip_connection_levels=[], batch_norm = False, use_transpose_conv=False, name="decoder"):
+    def __init__(self, n_up, n_filters, max_filters=0, image_shape=None, anisotropic_conv=False, n_conv_layer_levels=2, use_1x1_conv_after_concat=True, n_last_1x1_conv=0, omit_skip_connection_levels=[], batch_norm = False, upsampling_conv_kernel=2, use_transpose_conv=False, name="decoder"):
         self.layers=[]
         self.name=name
         assert n_up>0, "number of upsampling should be >0"
@@ -173,8 +173,10 @@ class UnetDecoder():
         self.batch_norm = batch_norm
         if max_filters<=0:
             max_filters = n_filters * 2**n_up
+        self.n_conv_layer_levels = ensure_multiplicity(n_down+1, n_conv_layer_levels)
         self.max_filters=max_filters
         self.image_shape=image_shape
+        self.upsampling_conv_kernel=upsampling_conv_kernel
         self.use_transpose_conv=use_transpose_conv
         self.anisotropic_conv=anisotropic_conv
         if omit_skip_connection_levels is None:
@@ -187,8 +189,9 @@ class UnetDecoder():
 
     def _upsampling_block(self, filters, layer_idx):
         if self.use_transpose_conv:
+            assert self.upsampling_conv_kernel>0, "invalid upsampling_conv_kernel"
             if self.batch_norm:
-                upsampleL = Conv2DTranspose(filters, kernel_size=(2, 2), strides=(2,2), padding='same', name = "{}_l{}_up".format(self.name, layer_idx) if self.name else None)
+                upsampleL = Conv2DTranspose(filters, kernel_size=(self.upsampling_conv_kernel, self.upsampling_conv_kernel), strides=(2,2), padding='same', name = "{}_l{}_up".format(self.name, layer_idx) if self.name else None)
                 batch_normL = BatchNormalization()
                 activationL = Activation('relu')
                 def upsampl_fun(batch):
@@ -197,10 +200,12 @@ class UnetDecoder():
                     return activationL(bn)
                 return upsampl_fun
             else:
-                return Conv2DTranspose(filters, kernel_size=(2, 2), strides=(2,2), padding='same', activation = 'relu', name = "{}_l{}_up".format(self.name, layer_idx) if self.name else None)
+                return Conv2DTranspose(filters, kernel_size=(self.upsampling_conv_kernel, self.upsampling_conv_kernel), strides=(2,2), padding='same', activation = 'relu', name = "{}_l{}_up".format(self.name, layer_idx) if self.name else None)
         else:
             upsampleL = UpSampling2D(size=(2,2), name = "{}_l{}_up".format(self.name, layer_idx) if self.name else None)
-            upconvL = conv_block(filters, (2, 2), batch_norm=self.batch_norm, name = "{}_l{}_conv1".format(self.name, layer_idx) if self.name else None)
+            if self.upsampling_conv_kernel<=0: # no convolution
+                return upsampleL
+            upconvL = conv_block(filters, (self.upsampling_conv_kernel, self.upsampling_conv_kernel), batch_norm=self.batch_norm, name = "{}_l{}_upconv".format(self.name, layer_idx) if self.name else None)
             def upsampl_fun(batch):
                 up = upsampleL(batch)
                 return upconvL(up)
@@ -211,11 +216,8 @@ class UnetDecoder():
         upsampleL = self._upsampling_block(filters, layer_idx)
         concatL = Concatenate(axis=3, name = "{}_l{}_concat".format(self.name, layer_idx) if self.name else None)
         ker_sizeX, ker_sizeY = self._get_kernel_size(layer_idx)
-        kX = 1 if self.use_1x1_conv_after_concat else ker_sizeX
-        kY = 1 if self.use_1x1_conv_after_concat else ker_sizeY
-        conv1L = conv_block(filters, (kX, kY), batch_norm=self.batch_norm, name = "{}_l{}_conv2".format(self.name, layer_idx) if self.name else None)
-        conv2L = conv_block(filters, (ker_sizeX, ker_sizeY), batch_norm=self.batch_norm, name = "{}_l{}_conv3".format(self.name, layer_idx) if self.name else None)
-        self.layers.append([upsampleL, concatL, conv1L, conv2L])
+        convLs = [conv_block(filters, (1 if c==0 and self.use_1x1_conv_after_concat else ker_sizeX, 1 if c==0 and self.use_1x1_conv_after_concat else ker_sizeY), batch_norm=self.batch_norm, name="{}_l{}_conv{}".format(self.name, layer_idx, c) if self.name else None) for c in range(self.n_conv_layer_levels[layer_idx])]
+        self.layers.append([upsampleL, concatL, convLs])
 
     def decode(self, input, residuals, return_all=False):
         if len(residuals)!=self.n_up:
@@ -256,9 +258,11 @@ class UnetDecoder():
                 concat = layers[1]([residual, upsample])
         else:
             concat = upconv
-        conv1 = layers[2](concat)
-        conv2 = layers[3](conv1)
-        return conv2
+        convLs = layers[2]
+        conv = concat
+        for convLidx in range(len(convLs)):
+            conv = convLs(conv)
+        return conv
 
     def _get_kernel_size(self, layer_idx):
         if self.image_shape is None:
@@ -298,7 +302,7 @@ def get_distnet_model(image_shape=(256, 32), n_contractions=4, filters=128, max_
 def get_unet_model(image_shape, n_contractions, filters, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1, dropout_contraction_levels=[], dropout_levels=0.2, batch_norm=False):
     return get_custom_unet_model(image_shape=image_shape, n_contractions=n_contractions, filters=filters, max_filters=0, n_outputs=n_outputs, n_output_channels=n_output_channels, out_activations=out_activations, anisotropic_conv=False, n_inputs=n_inputs, n_input_channels=n_input_channels, use_1x1_conv_after_concat=False, n_1x1_conv_after_decoder=0, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels, batch_norm=batch_norm)
 
-def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=True, n_inputs=1, n_input_channels=1, use_self_attention=False, add_attention=False, num_attention_heads=1, positional_encoding=True, output_attention_weights=False, n_conv_layer_levels_encoder=2, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, use_transpose_conv=False, batch_norm=False, omit_skip_connection_levels=[], n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True, dropout_contraction_levels=[], dropout_levels=0.2):
+def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1,  anisotropic_conv=True, upsampling_conv_kernel=2, use_self_attention=False, add_attention=False, num_attention_heads=1, positional_encoding=True, output_attention_weights=False, n_conv_layer_levels_encoder=2, n_conv_layer_levels_decoder=2, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, use_transpose_conv=False, batch_norm=False, omit_skip_connection_levels=[], n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True, dropout_contraction_levels=[], dropout_levels=0.2):
     n_output_channels = ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = ensure_multiplicity(n_inputs, n_input_channels)
@@ -312,7 +316,7 @@ def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n
         input = Input(shape = image_shape+(n_input_channels[0],), name="input")
 
     encoders = [UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, n_conv_layer_levels_encoder, num_attention_heads if use_self_attention else 0, add_attention, positional_encoding=positional_encoding, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels, batch_norm=batch_norm, name="encoder{}".format(i)) for i in range(n_stack)]
-    decoders = [UnetDecoder(n_contractions, filters[1], max_filters[1], image_shape, anisotropic_conv, n_last_1x1_conv=n_1x1_conv_after_decoder, use_1x1_conv_after_concat=use_1x1_conv_after_concat, omit_skip_connection_levels=omit_skip_connection_levels, use_transpose_conv=use_transpose_conv, batch_norm=batch_norm, name="decoder{}".format(i)) for i in range(n_stack)]
+    decoders = [UnetDecoder(n_contractions, filters[1], max_filters[1], image_shape, anisotropic_conv, n_conv_layer_levels_decoder, n_last_1x1_conv=n_1x1_conv_after_decoder, use_1x1_conv_after_concat=use_1x1_conv_after_concat, omit_skip_connection_levels=omit_skip_connection_levels, upsampling_conv_kernel=upsampling_conv_kernel, use_transpose_conv=use_transpose_conv, batch_norm=batch_norm, name="decoder{}".format(i)) for i in range(n_stack)]
 
     def get_output(layer, rank=0):
         name = "" if rank==0 else "_i"+str(rank)+"_"
