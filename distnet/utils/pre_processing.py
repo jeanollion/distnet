@@ -249,17 +249,17 @@ def random_scaling(img, mean=None, std=None, alpha_range=1, beta_range=3):
         scaled array
 
     """
-	if mean is None:
-		mean = img.mean()
-	if std is None:
-		std = img.std()
-	if np.isscalar(alpha):
-		alpha_range = [-alpha_range, alpha_range]
-	if np.isscalar(beta_range):
-		beta_range = [-beta_range, beta_range]
-	factor = 1 / (std * 10**uniform(-alpha_range, alpha_range))
-	center = mean * std * uniform(-beta_range, beta_range)
-	return (img - center) * factor
+    if mean is None:
+        mean = img.mean()
+    if std is None:
+        std = img.std()
+    if np.isscalar(alpha):
+        alpha_range = [-alpha_range, alpha_range]
+    if np.isscalar(beta_range):
+        beta_range = [-beta_range, beta_range]
+    factor = 1 / (std * 10**uniform(-alpha_range, alpha_range))
+    center = mean * std * uniform(-beta_range, beta_range)
+    return (img - center) * factor
 
 def add_gaussian_noise(img, sigma=[0, 0.1]):
     if is_list(sigma):
