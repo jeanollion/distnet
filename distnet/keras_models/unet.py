@@ -257,7 +257,7 @@ class UnetDecoder():
             else:
                 concat = layers[1]([residual, upsample])
         else:
-            concat = upconv
+            concat = upsample
         conv = concat
         for convL in layers[2]:
             conv = convL(conv)
