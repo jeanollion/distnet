@@ -258,10 +258,9 @@ class UnetDecoder():
                 concat = layers[1]([residual, upsample])
         else:
             concat = upconv
-        convLs = layers[2]
         conv = concat
-        for convLidx in range(len(convLs)):
-            conv = convLs(conv)
+        for convL in layers[2]:
+            conv = convL(conv)
         return conv
 
     def _get_kernel_size(self, layer_idx):
