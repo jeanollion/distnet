@@ -221,8 +221,7 @@ class ImageDataGeneratorMM(ImageDataGenerator):
                 raise ValueError("Image is blank, cannot perform illumination augmentation")
             img = pp.adjust_histogram_range(img, min=params["vmin"], max = params["vmax"], initial_range=[min, max])
         if "histogram_voodoo_target_points" in params:
-            target_points = params["histogram_voodoo_target_points"]
-            img = pp.histogram_voodoo(img, len(target_points) - 2, target_points = target_points)
+            img = pp.histogram_voodoo(img, self.histogram_voodoo_n_points, self.histogram_voodoo_intensity, target_points = params["histogram_voodoo_target_points"])
         if "illumination_voodoo_target_points" in params:
             target_points = params["illumination_voodoo_target_points"]
             img = pp.illumination_voodoo(img, len(target_points), target_points=target_points)
