@@ -227,6 +227,40 @@ def random_histogram_range(img, min_range=0.1, range=[0,1]):
     min, max = compute_histogram_range(min_range, range)
     return adjust_histogram_range(img, min, max)
 
+def random_scaling(img, mean=None, std=None, alpha_range=1, beta_range=3):
+    """Scales the image by this formlua: I' = I - μ * ( β * std ) / std * 10**α. α, β randomly drawn
+
+    Parameters
+    ----------
+    img : type
+        numpy array
+    mean : type
+        default mean value, if none, mean is computed on the array
+    std : type
+        default standard deviation value, if none, std is computed on the array
+    alpha_range : type
+        range in which α is uniformly chosen (is scalar: range is [-alpha_range, alpha_range])
+    beta_range : type
+        range in which β is uniformly chosen (is scalar: range is [-alpha_range, alpha_range])
+
+    Returns
+    -------
+    type
+        scaled array
+
+    """
+	if mean is None:
+		mean = img.mean()
+	if std is None:
+		std = img.std()
+	if np.isscalar(alpha):
+		alpha_range = [-alpha_range, alpha_range]
+	if np.isscalar(beta_range):
+		beta_range = [-beta_range, beta_range]
+	factor = 1 / (std * 10**uniform(-alpha_range, alpha_range))
+	center = mean * std * uniform(-beta_range, beta_range)
+	return (img - center) * factor
+
 def add_gaussian_noise(img, sigma=[0, 0.1]):
     if is_list(sigma):
         if len(sigma)==2:
