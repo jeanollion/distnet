@@ -173,7 +173,7 @@ class UnetDecoder():
         self.batch_norm = batch_norm
         if max_filters<=0:
             max_filters = n_filters * 2**n_up
-        self.n_conv_layer_levels = ensure_multiplicity(n_down+1, n_conv_layer_levels)
+        self.n_conv_layer_levels = ensure_multiplicity(n_up, n_conv_layer_levels)
         self.max_filters=max_filters
         self.image_shape=image_shape
         self.upsampling_conv_kernel=upsampling_conv_kernel
