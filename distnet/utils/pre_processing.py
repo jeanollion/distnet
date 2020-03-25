@@ -228,7 +228,7 @@ def random_histogram_range(img, min_range=0.1, range=[0,1]):
     return adjust_histogram_range(img, min, max)
 
 def random_scaling(img, mean=None, std=None, alpha_range=1, beta_range=3):
-    """Scales the image by this formlua: I' = I - μ * ( β * std ) / std * 10**α. α, β randomly drawn
+    """Scales the image by this formlua: I' = ( I - ( μ + ( β * std ) ) ) / std * 10**α. α, β randomly drawn
 
     Parameters
     ----------
@@ -258,7 +258,7 @@ def random_scaling(img, mean=None, std=None, alpha_range=1, beta_range=3):
     if np.isscalar(beta_range):
         beta_range = [-beta_range, beta_range]
     factor = 1 / (std * 10**uniform(alpha_range[0], alpha_range[1]))
-    center = mean * std * uniform(beta_range[0], beta_range[1])
+    center = mean + std * uniform(beta_range[0], beta_range[1])
     return (img - center) * factor
 
 def add_gaussian_noise(img, sigma=[0, 0.1]):

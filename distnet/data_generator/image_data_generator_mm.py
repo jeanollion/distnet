@@ -153,11 +153,13 @@ class ImageDataGeneratorMM(ImageDataGenerator):
 
             if self.histogram_voodoo_n_points>0 and self.histogram_voodoo_intensity>0 and not getrandbits(1):
                 # draw control points
-                vmin = params["vmin"]
-                vmax = params["vmax"]
-                control_points = np.linspace(vmin, vmax, num=self.histogram_voodoo_n_points + 2)
-                target_points = pp.get_histogram_voodoo_target_points(control_points, self.histogram_voodoo_intensity)
-                params["histogram_voodoo_target_points"] = target_points
+                if "vmin" in params and "vmax" in params:
+                    vmin = params["vmin"]
+                    vmax = params["vmax"]
+                    control_points = np.linspace(vmin, vmax, num=self.histogram_voodoo_n_points + 2)
+                    target_points = pp.get_histogram_voodoo_target_points(control_points, self.histogram_voodoo_intensity)
+                    params["histogram_voodoo_target_points"] = target_points
+                params["histogram_voodoo_target_points"] = None
             if self.illumination_voodoo_n_points>0 and self.illumination_voodoo_intensity>0 and not getrandbits(1):
                 params["illumination_voodoo_target_points"] = pp.get_illumination_voodoo_target_points(self.illumination_voodoo_n_points, self.illumination_voodoo_intensity)
         return params
