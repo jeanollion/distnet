@@ -8,7 +8,7 @@ import copy
 import scipy.ndimage as ndi
 
 class ImageDataGeneratorMM(ImageDataGenerator):
-    def __init__(self, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, min_histogram_to_zero=False, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, bacteria_swim_distance=50, bacteria_swim_min_gap=3, closed_end=True, **kwargs):
+    def __init__(self, rotate90=False, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, min_histogram_to_zero=False, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, bacteria_swim_distance=50, bacteria_swim_min_gap=3, closed_end=True, **kwargs):
         if width_zoom_range is None:
             width_zoom_range=0
         if height_zoom_range is None:
@@ -38,6 +38,7 @@ class ImageDataGeneratorMM(ImageDataGenerator):
             raise ValueError("min_zoom_aspectratio must be >=0")
         if max_zoom_aspectratio<min_zoom_aspectratio:
             raise ValueError("min_zoom_aspectratio must be inferior to max_zoom_aspectratio")
+        self.rotate90=rotate90
         self.max_zoom_aspectratio=max_zoom_aspectratio
         self.min_zoom_aspectratio=min_zoom_aspectratio
         self.min_histogram_range=min_histogram_range
@@ -129,7 +130,8 @@ class ImageDataGeneratorMM(ImageDataGenerator):
             params['ty'] = new_ty
             params['theta'] = new_theta
             #print("limit translation & rotation: ty: {}, dy: {} ty+dy {}, delta: {}, ty: {}->{}, theta: {}->{}, ".format(ty, dy, abs(ty)+dy, delta, ty, new_ty, theta, new_theta))
-
+        if self.rotate90 and img_shape[0]==img_shape[1] and not getrandbits(1):
+            params["rotate90"] = True
         # illumination parameters
         if self.perform_illumination_augmentation:
             if self.min_histogram_range<1 and self.min_histogram_range>0:
@@ -212,7 +214,8 @@ class ImageDataGeneratorMM(ImageDataGenerator):
 
         # geom augmentation
         img = super().apply_transform(img, params)
-
+        if params.get("rotate90", False):
+            img = np.rot90(img, k=1, axes=(0, 1))
         # illumination augmentation
         if "vmin" in params and "vmax" in params:
             min = img.min()
