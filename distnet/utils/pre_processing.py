@@ -252,16 +252,15 @@ def random_histogram_range(img, min_range=0.1, range=[0,1]):
     min, max = compute_histogram_range(min_range, range)
     return adjust_histogram_range(img, min, max)
 
-def random_scaling(img, mean=None, std=None, alpha_range=1, beta_range=3):
-    """Scales the image by this formlua: I' = ( I - ( μ + ( β * std ) ) ) / std * 10**α. α, β randomly drawn
+def random_scaling(img, center=None, scale=None, alpha_range=[-0.3, 0.17], beta_range=0.07):
+    """Scales the image by this formlua: I' = ( I - ( μ + ( β * std ) ) ) / (std * 10**α). α, β randomly chosen
 
     Parameters
     ----------
-    img : type
-        numpy array
-    mean : type
-        default mean value, if none, mean is computed on the array
-    std : type
+    img : numpy array
+    center : float
+        default center value, if center, mean is computed on the array
+    scale : float
         default standard deviation value, if none, std is computed on the array
     alpha_range : type
         range in which α is uniformly chosen (is scalar: range is [-alpha_range, alpha_range])
@@ -274,16 +273,16 @@ def random_scaling(img, mean=None, std=None, alpha_range=1, beta_range=3):
         scaled array
 
     """
-    if mean is None:
-        mean = img.mean()
-    if std is None:
-        std = img.std()
+    if center is None:
+        center = img.mean()
+    if scale is None:
+        scale = img.std()
     if np.isscalar(alpha_range):
         alpha_range = [-alpha_range, alpha_range]
     if np.isscalar(beta_range):
         beta_range = [-beta_range, beta_range]
-    factor = 1 / (std * 10**uniform(alpha_range[0], alpha_range[1]))
-    center = mean + std * uniform(beta_range[0], beta_range[1])
+    factor = 1 / (scale * 10**uniform(alpha_range[0], alpha_range[1]))
+    center = center + scale * uniform(beta_range[0], beta_range[1])
     return (img - center) * factor
 
 def add_gaussian_noise(img, sigma=[0, 0.1]):
