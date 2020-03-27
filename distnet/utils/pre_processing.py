@@ -201,6 +201,31 @@ def apply_successively(*functions):
         return img
     return func
 
+def random_rotate90_fun(axes=(0, 1),  other_fun=None):
+    """Augmentation function that applied randomly a 90° rotation with a probability of 50%
+
+    Parameters
+    ----------
+    axes : type
+        defines the rotation plane. If input is a batch, set (1, 2)
+    other_fun : type
+        other function applied to the input
+
+    Returns
+    -------
+    type
+        a function that input a numpy array
+
+    """
+    def func(img):
+        if not not getrandbits(1):
+            img = np.rot90(img, axes=axes)
+        if other_fun is not None:
+            return other_fun(img)
+        else:
+            return img
+    return func
+
 def gaussian_blur(img, sig):
     if len(img.shape)>2 and img.shape[-1]==1:
         return np.expand_dims(gaussian_filter(img.squeeze(-1), sig), -1)
