@@ -13,7 +13,12 @@ except Exception:
 	pass
 
 def batch_wise_fun(fun):
-	return lambda batch : np.stack([fun(batch[i]) for i in range(batch.shape[0])], 0)
+	#return lambda batch : np.stack([fun(batch[i]) for i in range(batch.shape[0])], 0)
+    def func(batch):
+        for b in range(batch.shape[0]):
+            batch[b] = fun(batch[b])
+        return batch
+    return func
 
 def apply_and_stack_channel(*funcs):
 	return lambda batch : np.concatenate([fun(batch) for fun in funcs], -1)
@@ -281,7 +286,7 @@ def random_scaling(img, center=None, scale=None, alpha_range=[-0.3, 0.17], beta_
         alpha_range = [-alpha_range, alpha_range]
     if np.isscalar(beta_range):
         beta_range = [-beta_range, beta_range]
-    factor = 1 / (scale * 10**uniform(alpha_range[0], alpha_range[1]))
+    factor = 1. / (scale * 10**uniform(alpha_range[0], alpha_range[1]))
     center = center + scale * uniform(beta_range[0], beta_range[1])
     return (img - center) * factor
 
