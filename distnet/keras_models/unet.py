@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, Conv2D, Input, MaxPool2D, UpSampling2D, Concatenate, Conv2DTranspose, Dropout, Lambda, Activation, BatchNormalization
+from tensorflow.keras.layers import Dense, Conv2D, Input, MaxPool2D, UpSampling2D, Concatenate, Conv2DTranspose, Dropout, SpatialDropout2D, SpatialDropout3D, Lambda, Activation, BatchNormalization
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import backend as K
 from tensorflow.keras.losses import mean_squared_error
@@ -16,7 +16,7 @@ def get_slice_channel_layer(channel, name=None): # tensorflow function !!
     return Lambda(lambda x: x[:,:,:,channel:(channel+1)], name = (name if name else "get_channel")+"_"+str(channel))
 
 class UnetEncoder():
-    def __init__(self, n_down, n_filters, max_filters=0, image_shape=None, anisotropic_conv=True, n_conv_layer_levels=2, halve_filters_last_conv=False, num_attention_heads=0, add_attention=False, positional_encoding=True, dropout_contraction_levels=[], dropout_levels=[0.2], batch_norm=False, activation="relu", name="encoder"):
+    def __init__(self, n_down, n_filters, max_filters=0, image_shape=None, anisotropic_conv=True, n_conv_layer_levels=2, halve_filters_last_conv=False, num_attention_heads=0, add_attention=False, positional_encoding=True, dropout_contraction_levels=[], dropout_levels=[0.2], spatial_dropout=True, batch_norm=False, activation="relu", name="encoder"):
         if image_shape is not None:
             min_dim = min(image_shape[0], image_shape[1]) if image_shape[0] is not None and image_shape[1] is not None else image_shape[0] if image_shape[0] is not None else image_shape[1] if image_shape[1] is not None else None
             if min_dim is not None:
@@ -29,6 +29,7 @@ class UnetEncoder():
         self.n_filters=n_filters
         self.activation = activation
         self.anisotropic_conv=anisotropic_conv
+        self.spatial_dropout=spatial_dropout
         self.n_conv_layer_levels = ensure_multiplicity(n_down+1, n_conv_layer_levels)
         if num_attention_heads>0: # remove one convolution at last layer to replace it by the self-attention layer
             self.n_conv_layer_levels[-1] = max(0, self.n_conv_layer_levels[-1] - 1)
@@ -100,7 +101,13 @@ class UnetEncoder():
     def _get_dropout_layer(self, layer_idx):
         if layer_idx in self.dropout_contraction_levels:
             dropout_level = self.dropout_levels[self.dropout_contraction_levels.index(layer_idx)]
-            return Dropout(dropout_level, name = "{}_l{}_dropout".format(self.name,layer_idx) if self.name else None)
+            if self.spatial_dropout:
+                if self.image_shape is None or len(self.image_shape)<3:
+                    return SpatialDropout2D(dropout_level, name = "{}_l{}_dropout".format(self.name,layer_idx) if self.name else None)
+                else:
+                    return SpatialDropout3D(dropout_level, name = "{}_l{}_dropout".format(self.name,layer_idx) if self.name else None)
+            else:
+                return Dropout(dropout_level, name = "{}_l{}_dropout".format(self.name,layer_idx) if self.name else None)
         else:
             return None
 
@@ -299,13 +306,13 @@ def concat_and_conv(inputs, n_filters, layer_name, activation='relu'):
     concat = Concatenate(axis=3, name = layer_name+"_concat")(inputs)
     return Conv2D(n_filters, (1, 1), padding='same', activation=activation, kernel_initializer = 'he_normal', name = layer_name+"_conv1x1")(concat)
 
-def get_distnet_model(image_shape=(256, 32), n_contractions=4, filters=128, max_filters=1024, n_outputs=3, n_output_channels=[1, 4, 2], out_activations=["linear", "softmax", "linear"], n_inputs=1, n_input_channels=2, num_attention_heads=1, positional_encoding=True, output_attention_weights=False, n_1x1_conv_after_decoder=1, dropout_contraction_levels=[-1], dropout_levels=0.2):
-    return get_custom_unet_model(image_shape, n_contractions, filters, max_filters=max_filters, n_outputs=n_outputs, n_output_channels=n_output_channels, out_activations=out_activations, anisotropic_conv=True, n_inputs=n_inputs, n_input_channels=n_input_channels, use_1x1_conv_after_concat=True, use_self_attention=True, add_attention=False, num_attention_heads=num_attention_heads, output_attention_weights=output_attention_weights, n_1x1_conv_after_decoder=n_1x1_conv_after_decoder, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels)
+def get_distnet_model(image_shape=(256, 32), n_contractions=4, filters=128, max_filters=1024, n_outputs=3, n_output_channels=[1, 4, 2], out_activations=["linear", "softmax", "linear"], n_inputs=1, n_input_channels=2, num_attention_heads=1, positional_encoding=True, output_attention_weights=False, n_1x1_conv_after_decoder=1, dropout_contraction_levels=[-1], dropout_levels=0.2, spatial_dropout=False):
+    return get_custom_unet_model(image_shape, n_contractions, filters, max_filters=max_filters, n_outputs=n_outputs, n_output_channels=n_output_channels, out_activations=out_activations, anisotropic_conv=True, n_inputs=n_inputs, n_input_channels=n_input_channels, use_1x1_conv_after_concat=True, use_self_attention=True, add_attention=False, num_attention_heads=num_attention_heads, output_attention_weights=output_attention_weights, n_1x1_conv_after_decoder=n_1x1_conv_after_decoder, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels, spatial_dropout=spatial_dropout)
 
 def get_unet_model(image_shape, n_contractions, filters, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1, dropout_contraction_levels=[], dropout_levels=0.2, batch_norm=False):
     return get_custom_unet_model(image_shape=image_shape, n_contractions=n_contractions, filters=filters, max_filters=0, n_outputs=n_outputs, n_output_channels=n_output_channels, out_activations=out_activations, anisotropic_conv=False, n_inputs=n_inputs, n_input_channels=n_input_channels, use_1x1_conv_after_concat=False, n_1x1_conv_after_decoder=0, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels, batch_norm=batch_norm)
 
-def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1,  anisotropic_conv=True, upsampling_conv_kernel=2, halve_filters_last_conv=False, use_self_attention=False, add_attention=False, num_attention_heads=1, positional_encoding=True, output_attention_weights=False, n_conv_layer_levels_encoder=2, n_conv_layer_levels_decoder=2, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, use_transpose_conv=False, batch_norm=False, omit_skip_connection_levels=[], activation='relu', n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True, dropout_contraction_levels=[], dropout_levels=0.2, residual=False):
+def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1,  anisotropic_conv=True, upsampling_conv_kernel=2, halve_filters_last_conv=False, use_self_attention=False, add_attention=False, num_attention_heads=1, positional_encoding=True, output_attention_weights=False, n_conv_layer_levels_encoder=2, n_conv_layer_levels_decoder=2, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, use_transpose_conv=False, batch_norm=False, omit_skip_connection_levels=[], activation='relu', n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True, dropout_contraction_levels=[], dropout_levels=0.2, spatial_dropout=True, residual=False):
     n_output_channels = ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = ensure_multiplicity(n_inputs, n_input_channels)
@@ -319,7 +326,7 @@ def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n
     else:
         input = Input(shape = image_shape+(n_input_channels[0],), name="input")
 
-    encoders = [UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, n_conv_layer_levels_encoder, halve_filters_last_conv, num_attention_heads if use_self_attention else 0, add_attention, positional_encoding=positional_encoding, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels, batch_norm=batch_norm, activation=activation, name="encoder{}".format(i)) for i in range(n_stack)]
+    encoders = [UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, n_conv_layer_levels_encoder, halve_filters_last_conv, num_attention_heads if use_self_attention else 0, add_attention, positional_encoding=positional_encoding, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels, spatial_dropout=spatial_dropout, batch_norm=batch_norm, activation=activation, name="encoder{}".format(i)) for i in range(n_stack)]
     decoders = [UnetDecoder(n_contractions, filters[1], max_filters[1], image_shape, anisotropic_conv, n_conv_layer_levels_decoder, halve_filters_last_conv, n_last_1x1_conv=n_1x1_conv_after_decoder, use_1x1_conv_after_concat=use_1x1_conv_after_concat, omit_skip_connection_levels=omit_skip_connection_levels, upsampling_conv_kernel=upsampling_conv_kernel, use_transpose_conv=use_transpose_conv, batch_norm=batch_norm, activation=activation, name="decoder{}".format(i)) for i in range(n_stack)]
 
     def get_output(layer, rank=0):
