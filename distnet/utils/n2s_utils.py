@@ -42,7 +42,7 @@ def get_denoiser_manipulation_fun(method, patch_radius=1):
             else:
                 raise ValueError("Image Rank not supported yet")
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
-                replacement_coords = get_random_coords(patch_size, mask_coords, image_shape)
+                replacement_coords = get_random_coords(patch_radius, mask_coords, image_shape)
                 mask_idx = (b,) + mask_coords + (c,)
                 replacement_idx = (b,) + replacement_coords + (c,)
                 batch[mask_idx] = batch[replacement_idx]
@@ -50,6 +50,23 @@ def get_denoiser_manipulation_fun(method, patch_radius=1):
         return fun
     else:
         raise ValueError("Invalid method")
+        # def fun(batch): # test
+        #     phase = get_random_phase(patch_size)
+        #     image_shape = batch.shape[1:-1]
+        #     mask_coords = get_mask_coords(patch_size , phase, image_shape)
+        #     output = np.zeros(shape=(batch.shape[0],)+image_shape+(batch.shape[-1]*2,))
+        #     if len(image_shape)==2:
+        #         get_random_coords = get_random_coords2D
+        #     else:
+        #         raise ValueError("Image Rank not supported yet")
+        #     n_chan  = batch.shape[-1]
+        #     for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+        #         replacement_coords = get_random_coords(patch_radius, mask_coords, image_shape)
+        #         for i in range(len(mask_coords[0])):
+        #             output[b, mask_coords[0][i], mask_coords[1][i], c+n_chan] = i+1
+        #             output[b, replacement_coords[0][i], replacement_coords[1][i], c] = i+1
+        #     return output
+        # return fun
 
 def get_output(batch, mask_coords):
     mask = np.zeros(batch.shape, dtype=batch.dtype)
@@ -87,7 +104,7 @@ def get_random_coords2D(patch_radius, coords_yx, shape):
     choices = list(range(0,center)) + list(range(center+1, n_coords))
     yx = np.random.choice(choices, size=coords_yx[0].shape[0], replace=True)
     y = yx % patch_size - patch_radius
-    x = (yx // patch_size) % patch_size - patch_radius
+    x = ((yx // patch_size) % patch_size) - patch_radius
     y += coords_yx[0]
     x += coords_yx[1]
     # mirror coords outside image (center on coord to avoid targeting center)
