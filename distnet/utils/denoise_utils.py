@@ -6,8 +6,7 @@ import itertools
 
 METHOD = ["ZERO", "AVERAGE", "RANDOM"]
 
-def get_denoiser_manipulation_fun(method=METHOD[2], patch_radius=1):
-    patch_size = 2 * patch_radius + 1
+def get_denoiser_manipulation_fun(method=METHOD[2], patch_size=3, random_patch_radius=1):
     if method==METHOD[0]:
         def fun(batch):
             image_shape = batch.shape[1:-1]
@@ -32,6 +31,7 @@ def get_denoiser_manipulation_fun(method=METHOD[2], patch_radius=1):
             return output
         return fun
     elif method==METHOD[2]:
+        assert 2 * random_patch_radius + 1 <= patch_size, "2 * random patch radius + 1 must be less or equal to path size"
         def fun(batch):
             offset = get_random_offset(patch_size)
             image_shape = batch.shape[1:-1]
@@ -42,7 +42,7 @@ def get_denoiser_manipulation_fun(method=METHOD[2], patch_radius=1):
             else:
                 raise ValueError("Image Rank not supported yet")
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
-                replacement_coords = get_random_coords(patch_radius, mask_coords, image_shape)
+                replacement_coords = get_random_coords(random_patch_radius, mask_coords, image_shape)
                 mask_idx = (b,) + mask_coords + (c,)
                 replacement_idx = (b,) + replacement_coords + (c,)
                 batch[mask_idx] = batch[replacement_idx]
