@@ -31,7 +31,6 @@ def get_denoiser_manipulation_fun(method=METHOD[2], patch_size=3, random_patch_r
             return output
         return fun
     elif method==METHOD[2]:
-        assert 2 * random_patch_radius + 1 <= patch_size, "2 * random patch radius + 1 must be less or equal to path size"
         def fun(batch):
             offset = get_random_offset(patch_size)
             image_shape = batch.shape[1:-1]
