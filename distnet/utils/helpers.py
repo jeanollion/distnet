@@ -73,7 +73,7 @@ def ensure_multiplicity(n, object):
     if not isinstance(object, list):
         object = [object]
     if len(object)>1 and len(object)!=n:
-        raise ValueError("length should be either 1 either equal to n"+str(n))
+        raise ValueError("length should be either 1 either {}".format(n))
     if n>1 and len(object)==1:
         object = object*n
     elif n==0:
