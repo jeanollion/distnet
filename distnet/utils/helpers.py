@@ -70,7 +70,7 @@ def convert_probabilities_to_logits(y_pred): # y_pred should be a tensor: tf.con
 def ensure_multiplicity(n, object):
     if object is None:
         return [None] * n
-    if not isinstance(object, list):
+    if not isinstance(object, (list, tuple)):
         object = [object]
     if len(object)>1 and len(object)!=n:
         raise ValueError("length should be either 1 either {}".format(n))
