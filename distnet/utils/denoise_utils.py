@@ -1,12 +1,13 @@
 import numpy as np
 from scipy.ndimage import convolve
+from scipy.stats import multivariate_normal
 from numpy.random import randint
 import itertools
 from .helpers import ensure_multiplicity
 
 METHOD = ["ZERO", "AVERAGE", "RANDOM"]
 
-def get_denoiser_manipulation_fun(method=METHOD[2], grid_shape=3, grid_random_increase_shape=0, random_patch_radius=1, mask_X_radius=0):
+def get_denoiser_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_increase_shape=0, average_radius = 1, random_patch_radius=1, mask_X_radius=0):
     if method==METHOD[0]:
         def fun(batch):
             image_shape = batch.shape[1:-1]
@@ -23,6 +24,8 @@ def get_denoiser_manipulation_fun(method=METHOD[2], grid_shape=3, grid_random_in
             return output
         return fun
     elif method==METHOD[1]:
+        if average_radius not in [1, 2, 3]:
+            raise ValueError("Average radius must be in [1, 2, 3]")
         def fun(batch):
             image_shape = batch.shape[1:-1]
             grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
@@ -30,7 +33,7 @@ def get_denoiser_manipulation_fun(method=METHOD[2], grid_shape=3, grid_random_in
             offset = get_random_offset(grid_shape_)
             mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
             output = get_output(batch, mask_coords)
-            avg = average_batch(batch, exclude_X=mask_X_radius>0)
+            avg = average_batch(batch, radius = average_radius, exclude_X=mask_X_radius>0)
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
@@ -152,30 +155,63 @@ def get_random_coords(patch_radius, offsets, img_shape, exclude_X = False):
         #coords[axis][mask] = 0
     return tuple(coords)
 
-AVG_KERNEL_1D = np.array([1.0/2, 0.0, 1.0/2])[np.newaxis, :, np.newaxis]
-AVG_KERNEL_2D = np.array([[0.5/6, 1.0/6, 0.5/6], [1.0/6, 0.0, 1.0/6], [0.5/6, 1.0/6, 0.5/6]])[np.newaxis, :, :, np.newaxis]
-AVG_KERNEL_3D = np.array([
-    [[0.5/16, 0.5/16, 0.5/16], [0.5/16, 1.0, 0.5/16], [0.5/16, 0.5/16, 0.5/16]],
-    [[0.5/16, 1.0/16, 0.5/16], [1.0/16, 0.0, 1.0/16], [0.5/16, 1.0/16, 0.5/16]],
-    [[0.5/16, 0.5/16, 0.5/16], [0.5/16, 1.0, 0.5/16], [0.5/16, 0.5/16, 0.5/16]]
-])[np.newaxis, :, :, :, np.newaxis]
-AVG_KERNEL_2D_X = np.array([[0.5/4, 1.0/4, 0.5/4], [0.0, 0.0, 0.0], (0.5/4, 1.0/4, 0.5/4)])[np.newaxis, :, :, np.newaxis]
-AVG_KERNEL_3D_X = np.array([
-    [[0.5/14, 0.5/14, 0.5/14], [0.5/14, 1.0, 0.5/14], [0.5/14, 0.5/14, 0.5/14]],
-    [[0.5/14, 1.0/14, 0.5/14], [0.0, 0.0, 0.0], [0.5/14, 1.0/14, 0.5/14]],
-    [[0.5/14, 0.5/14, 0.5/14], [0.5/14, 1.0, 0.5/14], [0.5/14, 0.5/14, 0.5/14]]
-])[np.newaxis, :, :, :, np.newaxis]
+def get_nd_gaussian_kernel(radius=1, sigma=0, ndim=2):
+    size = 2 * radius + 1
+    if ndim == 1:
+        coords = [np.mgrid[-radius:radius:complex(0, size)]]
+    elif ndim==2:
+        coords = np.mgrid[-radius:radius:complex(0, size), -radius:radius:complex(0, size)]
+    elif ndim==3:
+        coords = np.mgrid[-radius:radius:complex(0, size), -radius:radius:complex(0, size), -radius:radius:complex(0, size)]
+    else:
+        raise ValueError("Up to 3D supported")
 
-def average_batch(batch, exclude_X=False):
+    # Need an (N, ndim) array of coords pairs.
+    stacked = np.column_stack([c.flat for c in coords])
+    mu = np.array([0.0]*ndim)
+    s = np.array([sigma if sigma>0 else radius]*ndim)
+    covariance = np.diag(s**2)
+    z = multivariate_normal.pdf(stacked, mean=mu, cov=covariance)
+    # Reshape back to a (30, 30) grid.
+    z = z.reshape(coords[0].shape)
+    return z/z.sum()
+
+def get_nd_gaussian_donut_kernel(radius=1, sigma=0, ndim=2, exclude_X=False):
+    ker = get_nd_gaussian_kernel(radius, sigma, ndim)
+    if exclude_X:
+        if ndim==1:
+            raise ValueError("exclude_X incopatible with 1D arrays")
+        elif ndim==2:
+            for x in range(-radius, radius+1):
+                ker[radius, x] = 0
+        elif ndim==3:
+            for x in range(-radius, radius+1):
+                ker[radius, radius, x] = 0
+    else:
+        if ndim==1:
+            ker[radius] = 0
+        elif ndim==2:
+            ker[radius, radius] = 0
+        elif ndim==3:
+            ker[radius, radius, radius] = 0
+    return ker / ker.sum()
+
+AVG_KERNELS_1D = {r:get_nd_gaussian_donut_kernel(r, ndim=1)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
+AVG_KERNELS_2D = {r:get_nd_gaussian_donut_kernel(r, ndim=2)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
+AVG_KERNELS_3D = {r:get_nd_gaussian_donut_kernel(r, ndim=3)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
+AVG_KERNELS_2D_X = {r:get_nd_gaussian_donut_kernel(r, ndim=2, exclude_X=True)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
+AVG_KERNELS_3D_X = {r:get_nd_gaussian_donut_kernel(r, ndim=3, exclude_X=True)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
+
+def average_batch(batch, radius=1, exclude_X=False):
     rank = batch.ndim - 2 # exclude batch & channel
     if rank==2:
-        ker = AVG_KERNEL_2D if not exclude_X else AVG_KERNEL_2D_X
+        ker = AVG_KERNELS_2D[radius] if not exclude_X else AVG_KERNELS_2D_X[radius]
     elif rank==3:
-        ker = AVG_KERNEL_3D if not exclude_X else AVG_KERNEL_3D_X
+        ker = AVG_KERNELS_3D[radius] if not exclude_X else AVG_KERNELS_3D_X[radius]
     elif rank==1:
         if exclude_X:
             raise ValueError("exclude_X incopatible with 1D arrays")
-        ker = AVG_KERNEL_1D
+        ker = AVG_KERNELS_1D[radius]
     else:
         raise ValueError("Only 1D, 2D or 3D arrays supported")
     return convolve(batch, ker, mode ="mirror")
