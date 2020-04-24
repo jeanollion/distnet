@@ -7,13 +7,12 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["ZERO", "AVERAGE", "RANDOM"]
 
-def get_denoiser_manipulation_fun(method=METHOD[2], patch_shape=3, random_patch_radius=1, mask_X_radius=0):
+def get_denoiser_manipulation_fun(method=METHOD[2], patch_shape=3, patch_random_increase_shape=0, random_patch_radius=1, mask_X_radius=0):
     if method==METHOD[0]:
         def fun(batch):
             image_shape = batch.shape[1:-1]
             patch_shape_ = ensure_multiplicity(len(image_shape), patch_shape)
-            if isinstance(patch_shape_, list):
-                patch_shape_ = tuple(patch_shape_)
+            patch_shape_ = random_increase_patch(patch_random_increase_shape, patch_shape_)
             offset = get_random_offset(patch_shape_)
             mask_coords = get_mask_coords(patch_shape_, offset, image_shape)
             output = get_output(batch, mask_coords)
@@ -28,8 +27,7 @@ def get_denoiser_manipulation_fun(method=METHOD[2], patch_shape=3, random_patch_
         def fun(batch):
             image_shape = batch.shape[1:-1]
             patch_shape_ = ensure_multiplicity(len(image_shape), patch_shape)
-            if isinstance(patch_shape_, list):
-                patch_shape_ = tuple(patch_shape_)
+            patch_shape_ = random_increase_patch(patch_random_increase_shape, patch_shape_)
             offset = get_random_offset(patch_shape_)
             mask_coords = get_mask_coords(patch_shape_ , offset, image_shape)
             output = get_output(batch, mask_coords)
@@ -45,8 +43,7 @@ def get_denoiser_manipulation_fun(method=METHOD[2], patch_shape=3, random_patch_
         def fun(batch):
             image_shape = batch.shape[1:-1]
             patch_shape_ = ensure_multiplicity(len(image_shape), patch_shape)
-            if isinstance(patch_shape_, list):
-                patch_shape_ = tuple(patch_shape_)
+            patch_shape_ = random_increase_patch(patch_random_increase_shape, patch_shape_)
             offset = get_random_offset(patch_shape_)
             r_patch_radius = ensure_multiplicity(len(image_shape), random_patch_radius)
             if isinstance(r_patch_radius, list):
@@ -66,8 +63,7 @@ def get_denoiser_manipulation_fun(method=METHOD[2], patch_shape=3, random_patch_
         def fun(batch):
             image_shape = batch.shape[1:-1]
             patch_shape_ = ensure_multiplicity(len(image_shape), patch_shape)
-            if isinstance(patch_shape_, list):
-                patch_shape_ = tuple(patch_shape_)
+            patch_shape_ = random_increase_patch(patch_random_increase_shape, patch_shape_)
             offset = get_random_offset(patch_shape_)
             r_patch_radius = ensure_multiplicity(len(image_shape), random_patch_radius)
             if isinstance(r_patch_radius, list):
@@ -99,6 +95,10 @@ def get_output(batch, mask_coords):
         mask[mask_idx] = mask_value
     return np.concatenate([batch, mask], axis=-1)
 
+def random_increase_patch(random_increase_shape, patch_shape):
+    patch_increase = ensure_multiplicity(len(patch_shape), random_increase_shape)
+    return tuple([patch_shape[ax] + randint(0, high=patch_increase[ax]+1) if patch_increase[ax]>0 else patch_shape[ax] for ax in range(len(patch_shape))])
+    
 def get_random_offset(patch_shape):
     grid_offset = randint(0, np.product(np.array(patch_shape)))
     return np.unravel_index(grid_offset, patch_shape)
