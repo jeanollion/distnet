@@ -1,4 +1,3 @@
-# adapted from noise2self https://github.com/czbiohub/noise2self
 import numpy as np
 from scipy.ndimage import convolve
 from numpy.random import randint
@@ -7,17 +6,17 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["ZERO", "AVERAGE", "RANDOM"]
 
-def get_denoiser_manipulation_fun(method=METHOD[2], patch_shape=3, patch_random_increase_shape=0, random_patch_radius=1, mask_X_radius=0):
+def get_denoiser_manipulation_fun(method=METHOD[2], grid_shape=3, grid_random_increase_shape=0, random_patch_radius=1, mask_X_radius=0):
     if method==METHOD[0]:
         def fun(batch):
             image_shape = batch.shape[1:-1]
-            patch_shape_ = ensure_multiplicity(len(image_shape), patch_shape)
-            patch_shape_ = random_increase_patch(patch_random_increase_shape, patch_shape_)
-            offset = get_random_offset(patch_shape_)
-            mask_coords = get_mask_coords(patch_shape_, offset, image_shape)
+            grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
+            grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
+            offset = get_random_offset(grid_shape_)
+            mask_coords = get_mask_coords(grid_shape_, offset, image_shape)
             output = get_output(batch, mask_coords)
             if mask_X_radius>0:
-                mask_coords = get_extended_mask_coordsX(mask_coords, min(patch_shape[-1]//2, mask_X_radius), image_shape)
+                mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
                 mask_idx = (b,) + mask_coords + (c,)
                 batch[mask_idx] = 0
@@ -26,14 +25,14 @@ def get_denoiser_manipulation_fun(method=METHOD[2], patch_shape=3, patch_random_
     elif method==METHOD[1]:
         def fun(batch):
             image_shape = batch.shape[1:-1]
-            patch_shape_ = ensure_multiplicity(len(image_shape), patch_shape)
-            patch_shape_ = random_increase_patch(patch_random_increase_shape, patch_shape_)
-            offset = get_random_offset(patch_shape_)
-            mask_coords = get_mask_coords(patch_shape_ , offset, image_shape)
+            grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
+            grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
+            offset = get_random_offset(grid_shape_)
+            mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
             output = get_output(batch, mask_coords)
             avg = average_batch(batch, exclude_X=mask_X_radius>0)
             if mask_X_radius>0:
-                mask_coords = get_extended_mask_coordsX(mask_coords, min(patch_shape[-1]//2, mask_X_radius), image_shape)
+                mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
                 mask_idx = (b,) + mask_coords + (c,)
                 batch[mask_idx] = avg[mask_idx]
@@ -42,16 +41,16 @@ def get_denoiser_manipulation_fun(method=METHOD[2], patch_shape=3, patch_random_
     elif method==METHOD[2]:
         def fun(batch):
             image_shape = batch.shape[1:-1]
-            patch_shape_ = ensure_multiplicity(len(image_shape), patch_shape)
-            patch_shape_ = random_increase_patch(patch_random_increase_shape, patch_shape_)
-            offset = get_random_offset(patch_shape_)
+            grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
+            grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
+            offset = get_random_offset(grid_shape_)
             r_patch_radius = ensure_multiplicity(len(image_shape), random_patch_radius)
             if isinstance(r_patch_radius, list):
                 r_patch_radius = tuple(r_patch_radius)
-            mask_coords = get_mask_coords(patch_shape_ , offset, image_shape)
+            mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
             output = get_output(batch, mask_coords)
             if mask_X_radius>0:
-                mask_coords = get_extended_mask_coordsX(mask_coords, min(patch_shape[-1]//2, mask_X_radius), image_shape)
+                mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
                 replacement_coords = get_random_coords(r_patch_radius, mask_coords, image_shape, exclude_X = mask_X_radius>0)
                 mask_idx = (b,) + mask_coords + (c,)
@@ -62,15 +61,15 @@ def get_denoiser_manipulation_fun(method=METHOD[2], patch_shape=3, patch_random_
     elif method=="TEST":
         def fun(batch):
             image_shape = batch.shape[1:-1]
-            patch_shape_ = ensure_multiplicity(len(image_shape), patch_shape)
-            patch_shape_ = random_increase_patch(patch_random_increase_shape, patch_shape_)
-            offset = get_random_offset(patch_shape_)
+            grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
+            grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
+            offset = get_random_offset(grid_shape_)
             r_patch_radius = ensure_multiplicity(len(image_shape), random_patch_radius)
             if isinstance(r_patch_radius, list):
                 r_patch_radius = tuple(r_patch_radius)
-            mask_coords = get_mask_coords(patch_shape_ , offset, image_shape)
+            mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
             if mask_X_radius>0:
-                mask_coords = get_extended_mask_coordsX(mask_coords, min(patch_shape[-1]//2, mask_X_radius), image_shape)
+                mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             mask = np.zeros(batch.shape, dtype=batch.dtype)
             mask2 = np.zeros(batch.shape, dtype=batch.dtype)
             mask_values = np.arange(mask_coords[0].shape[0])
@@ -95,18 +94,18 @@ def get_output(batch, mask_coords):
         mask[mask_idx] = mask_value
     return np.concatenate([batch, mask], axis=-1)
 
-def random_increase_patch(random_increase_shape, patch_shape):
-    patch_increase = ensure_multiplicity(len(patch_shape), random_increase_shape)
-    return tuple([patch_shape[ax] + randint(0, high=patch_increase[ax]+1) if patch_increase[ax]>0 else patch_shape[ax] for ax in range(len(patch_shape))])
-    
-def get_random_offset(patch_shape):
-    grid_offset = randint(0, np.product(np.array(patch_shape)))
-    return np.unravel_index(grid_offset, patch_shape)
+def random_increase_grid_shape(random_increase_shape, grid_shape):
+    shape_increase = ensure_multiplicity(len(grid_shape), random_increase_shape)
+    return tuple([grid_shape[ax] + randint(0, high=shape_increase[ax]+1) if shape_increase[ax]>0 else grid_shape[ax] for ax in range(len(grid_shape))])
 
-def get_mask_coords(patch_shape, offset, img_shape):
+def get_random_offset(grid_shape):
+    grid_offset = randint(0, np.product(np.array(grid_shape)))
+    return np.unravel_index(grid_offset, grid_shape)
+
+def get_mask_coords(grid_shape, offset, img_shape):
     if len(offset)!=len(img_shape):
         raise ValueError("offset and shape must have same rank")
-    coords = [np.arange(int(np.ceil((img_shape[i]-offset[i]) / patch_shape[i]))) * patch_shape[i] + offset[i] for i in range(len(img_shape))]
+    coords = [np.arange(int(np.ceil((img_shape[i]-offset[i]) / grid_shape[i]))) * grid_shape[i] + offset[i] for i in range(len(img_shape))]
     return tuple([a.flatten() for a in np.meshgrid(*coords, sparse=False, indexing='ij')])
 
 def get_extended_mask_coordsX(mask_coords, radX, img_shape):
@@ -135,16 +134,16 @@ def get_extended_mask_coordsX(mask_coords, radX, img_shape):
     return tuple(result)
 
 def get_random_coords(patch_radius, offsets, img_shape, exclude_X = False):
-    patch_shape = 2 * np.array(patch_radius) + 1
-    n_coords = np.product(patch_shape)
-    patch_shape = tuple(patch_shape)
+    grid_shape = 2 * np.array(patch_radius) + 1
+    n_coords = np.product(grid_shape)
+    grid_shape = tuple(grid_shape)
     center = n_coords // 2
     if not exclude_X:
         choices = list(range(0,center)) + list(range(center+1, n_coords))
     else:
-        choices = [i for i in range(n_coords) if np.any(np.unravel_index(i, patch_shape)[:-1]!=patch_radius[:-1])]
+        choices = [i for i in range(n_coords) if np.any(np.unravel_index(i, grid_shape)[:-1]!=patch_radius[:-1])]
     indices = np.random.choice(choices, size=offsets[0].shape[0], replace=True)
-    coords = list(np.unravel_index(indices, patch_shape))
+    coords = list(np.unravel_index(indices, grid_shape))
     for axis in range(len(offsets)):
         coords[axis] += offsets[axis] - patch_radius[axis]
         # mirror coords outside image (center on coord to avoid targeting center)
