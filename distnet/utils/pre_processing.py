@@ -268,9 +268,9 @@ def random_scaling(img, center=None, scale=None, alpha_range=[-0.3, 0.17], beta_
     scale : float
         default standard deviation value, if none, std is computed on the array
     alpha_range : type
-        range in which α is uniformly chosen (is scalar: range is [-alpha_range, alpha_range])
+        range in which α is uniformly chosen (if scalar: range is [-alpha_range, alpha_range])
     beta_range : type
-        range in which β is uniformly chosen (is scalar: range is [-alpha_range, alpha_range])
+        range in which β is uniformly chosen (if scalar: range is [-beta_range, beta_range])
 
     Returns
     -------
