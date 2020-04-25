@@ -7,7 +7,7 @@ def get_intensity_transformer(input_size=64, n_down=2, n_filters=4, n_filters_ma
     conv = input
     filters = n_filters
     for l in range(n_down):
-        conv = Conv2D(filters, kernel_size = (3,3), strides=2, padding='same', activation=activation=LeakyReLU(alpha=0.5), name="{}_conv_{}".format(name, l))(conv)
+        conv = Conv2D(filters, kernel_size = (3,3), strides=2, padding='same', activation=LeakyReLU(alpha=0.5), name="{}_conv_{}".format(name, l))(conv)
         filters *=2
         if n_filters_max>0:
             filters = min(filters, n_filters_max)
