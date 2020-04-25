@@ -7,7 +7,7 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["ZERO", "AVERAGE", "RANDOM"]
 
-def get_denoiser_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_increase_shape=0, average_radius = 1, random_patch_radius=1, mask_X_radius=0):
+def get_denoiser_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0):
     if method==METHOD[0]:
         def fun(batch):
             image_shape = batch.shape[1:-1]
@@ -24,7 +24,7 @@ def get_denoiser_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_in
             return output
         return fun
     elif method==METHOD[1]:
-        if average_radius not in [1, 2, 3]:
+        if radius not in [1, 2, 3]:
             raise ValueError("Average radius must be in [1, 2, 3]")
         def fun(batch):
             image_shape = batch.shape[1:-1]
@@ -33,7 +33,7 @@ def get_denoiser_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_in
             offset = get_random_offset(grid_shape_)
             mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
             output = get_output(batch, mask_coords)
-            avg = average_batch(batch, radius = average_radius, exclude_X=mask_X_radius>0)
+            avg = average_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
@@ -47,7 +47,7 @@ def get_denoiser_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_in
             grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
             grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
             offset = get_random_offset(grid_shape_)
-            r_patch_radius = ensure_multiplicity(len(image_shape), random_patch_radius)
+            r_patch_radius = ensure_multiplicity(len(image_shape), radius)
             if isinstance(r_patch_radius, list):
                 r_patch_radius = tuple(r_patch_radius)
             mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
@@ -67,7 +67,7 @@ def get_denoiser_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_in
             grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
             grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
             offset = get_random_offset(grid_shape_)
-            r_patch_radius = ensure_multiplicity(len(image_shape), random_patch_radius)
+            r_patch_radius = ensure_multiplicity(len(image_shape), radius)
             if isinstance(r_patch_radius, list):
                 r_patch_radius = tuple(r_patch_radius)
             mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
