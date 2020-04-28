@@ -365,7 +365,7 @@ def is_list(l):
 def bacteria_swim(img, x, tx, order=1, fill_mode="nearest", cval=0):
     img[x:] = apply_affine_transform(img[x:], tx=tx, order=order, fill_mode=fill_mode, cval=cval)
 
-def histogram_voodoo(image, num_control_points=5, intensity=0.5, target_points = None):
+def histogram_voodoo(image, num_control_points=5, intensity=0.5, target_points = None, return_mapping = False):
     '''
     Adapted from delta software: https://gitlab.com/dunloplab/delta/blob/master/data.py
     It performs an elastic deformation on the image histogram to simulate
@@ -388,7 +388,10 @@ def histogram_voodoo(image, num_control_points=5, intensity=0.5, target_points =
         target_points[-1] = max
     mapping = interpolate.PchipInterpolator(control_points, target_points)
     newimage = mapping(image)
-    return newimage
+    if return_mapping:
+        return newimage, mapping
+    else:
+        return newimage
 
 def get_histogram_voodoo_target_points(control_points, intensity):
     if intensity<=0 or intensity>=1:
@@ -398,9 +401,8 @@ def get_histogram_voodoo_target_points(control_points, intensity):
     num_control_points = len(control_points) - 2
     delta = intensity * (max - min) / float(num_control_points + 1)
     target_points = copy.copy(control_points)
-    for i in range(1, len(control_points) - 1):
-        target_points[i] = np.random.uniform(low=control_points[i] - delta, high=control_points[i] + delta)
-    return control_points
+    target_points += np.random.uniform(low=-delta, high=delta, size = len(target_points))
+    return target_points
 
 def illumination_voodoo(image, num_control_points=5, intensity=0.8, target_points = None):
     '''
