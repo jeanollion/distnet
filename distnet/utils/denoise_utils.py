@@ -7,7 +7,32 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["ZERO", "AVERAGE", "RANDOM"]
 
-def get_denoiser_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0):
+def get_blind_denoising_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0):
+    """masking function for self-supervised denoising.
+
+    Parameters
+    ----------
+    method : string within ["AVERAGE", "RANDOM"]
+        masking method:
+            "AVERAGE" replace pixels by a gaussian average of the neighboring pixels (excluding the center pixel). radius controls the radius of the gaussian
+            "RANDOM" replace pixels by a randomly selected pixel around the pixel (excluding the center pixel). radius controls the size of the patch where random pixels are selected
+
+    grid_shape : integer / tuple of integer
+        controls grid space
+    grid_random_increase_shape : integer / tuple of integer
+        if greater than 0 a random value within the range [0, grid_random_increase_shape] will be added to the grid spacing so that grid spacing is in [grid_shape, grid_shape+grid_random_increase_shape]
+    radius : integer / tuple of integer
+        radius of the gaussian filter for AVERAGE method or of the patch to select random pixels for RANDOM method
+    mask_X_radius : integer
+        for structured noise: also mask horizontal pixels within the range [-mask_X_radius, mask_X_radius]
+
+    Returns
+    -------
+    function
+        function that inputs the batch (format NYXC), mask some of the batch pixels along a grid, and returns an output batch with shape N,Y,X,2*C
+        the first C channels correspond to the input batch and the last C channels correspond to the masking grid, where the value is 0 outside the grid, and X*Y / n_pix where n_pix is the number of masked pixels
+
+    """
     if method==METHOD[0]:
         def fun(batch):
             image_shape = batch.shape[1:-1]
@@ -89,6 +114,21 @@ def get_denoiser_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_in
         raise ValueError("Invalid method")
 
 def get_output(batch, mask_coords):
+    """Return the output of the blind denoising function
+
+    Parameters
+    ----------
+    batch : numpy array
+        format NYXC
+    mask_coords : tuple of 1D-numpy arrays
+        coordinates of the pixels to be masked (grid)
+
+    Returns
+    -------
+    numpy array
+        batch
+
+    """
     mask = np.zeros(batch.shape, dtype=batch.dtype)
     n_pix = float(np.prod(batch.shape[1:-1]))
     mask_value = n_pix / len(mask_coords[0])
@@ -98,6 +138,19 @@ def get_output(batch, mask_coords):
     return np.concatenate([batch, mask], axis=-1)
 
 def random_increase_grid_shape(random_increase_shape, grid_shape):
+    """Randomly increase the grid spacing in each direction
+
+    Parameters
+    ----------
+    random_increase_shape : integer / tuple of integer
+    grid_shape : tuple of integers
+
+    Returns
+    -------
+    tuple of integer
+        shape of the grid
+
+    """
     shape_increase = ensure_multiplicity(len(grid_shape), random_increase_shape)
     return tuple([grid_shape[ax] + randint(0, high=shape_increase[ax]+1) if shape_increase[ax]>0 else grid_shape[ax] for ax in range(len(grid_shape))])
 
@@ -106,6 +159,22 @@ def get_random_offset(grid_shape):
     return np.unravel_index(grid_offset, grid_shape)
 
 def get_mask_coords(grid_shape, offset, img_shape):
+    """get coordinates of masking grid.
+
+    Parameters
+    ----------
+    grid_shape : tuple of integers
+
+    offset : tuple of integers
+        offset of the grid
+    img_shape : tuple
+
+    Returns
+    -------
+    type
+        tuple of 1D-numpy arrays corresponding to grid corrdinates for each axis
+
+    """
     if len(offset)!=len(img_shape):
         raise ValueError("offset and shape must have same rank")
     coords = [np.arange(int(np.ceil((img_shape[i]-offset[i]) / grid_shape[i]))) * grid_shape[i] + offset[i] for i in range(len(img_shape))]
@@ -203,6 +272,23 @@ AVG_KERNELS_2D_X = {r:get_nd_gaussian_donut_kernel(r, ndim=2, exclude_X=True)[np
 AVG_KERNELS_3D_X = {r:get_nd_gaussian_donut_kernel(r, ndim=3, exclude_X=True)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
 
 def average_batch(batch, radius=1, exclude_X=False):
+    """convolves batch by donut gaussian filter (center pixel excluded).
+
+    Parameters
+    ----------
+    batch : numpy array
+        format NYXC
+    radius : integer
+        radius of the gaussian filter
+    exclude_X : type
+        for structured noise: excludes pixels along X axis
+
+    Returns
+    -------
+    type
+        convolved batch
+
+    """
     rank = batch.ndim - 2 # exclude batch & channel
     if rank==2:
         ker = AVG_KERNELS_2D[radius] if not exclude_X else AVG_KERNELS_2D_X[radius]
