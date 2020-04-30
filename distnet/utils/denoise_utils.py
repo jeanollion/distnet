@@ -5,9 +5,9 @@ from numpy.random import randint
 import itertools
 from .helpers import ensure_multiplicity
 
-METHOD = ["ZERO", "AVERAGE", "RANDOM"]
+METHOD = ["AVERAGE", "RANDOM"]
 
-def get_blind_denoising_manipulation_fun(method=METHOD[1], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0):
+def get_blind_denoising_manipulation_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0):
     """masking function for self-supervised denoising.
 
     Parameters
@@ -34,21 +34,6 @@ def get_blind_denoising_manipulation_fun(method=METHOD[1], grid_shape=3, grid_ra
 
     """
     if method==METHOD[0]:
-        def fun(batch):
-            image_shape = batch.shape[1:-1]
-            grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
-            grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
-            offset = get_random_offset(grid_shape_)
-            mask_coords = get_mask_coords(grid_shape_, offset, image_shape)
-            output = get_output(batch, mask_coords)
-            if mask_X_radius>0:
-                mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
-            for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
-                mask_idx = (b,) + mask_coords + (c,)
-                batch[mask_idx] = 0
-            return output
-        return fun
-    elif method==METHOD[1]:
         if radius not in [1, 2, 3]:
             raise ValueError("Average radius must be in [1, 2, 3]")
         def fun(batch):
@@ -66,7 +51,7 @@ def get_blind_denoising_manipulation_fun(method=METHOD[1], grid_shape=3, grid_ra
                 batch[mask_idx] = avg[mask_idx]
             return output
         return fun
-    elif method==METHOD[2]:
+    elif method==METHOD[1]:
         def fun(batch):
             image_shape = batch.shape[1:-1]
             grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
@@ -84,6 +69,21 @@ def get_blind_denoising_manipulation_fun(method=METHOD[1], grid_shape=3, grid_ra
                 mask_idx = (b,) + mask_coords + (c,)
                 replacement_idx = (b,) + replacement_coords + (c,)
                 batch[mask_idx] = batch[replacement_idx]
+            return output
+        return fun
+    elif method=="ZERO":
+        def fun(batch):
+            image_shape = batch.shape[1:-1]
+            grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
+            grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
+            offset = get_random_offset(grid_shape_)
+            mask_coords = get_mask_coords(grid_shape_, offset, image_shape)
+            output = get_output(batch, mask_coords)
+            if mask_X_radius>0:
+                mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
+            for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+                mask_idx = (b,) + mask_coords + (c,)
+                batch[mask_idx] = 0
             return output
         return fun
     elif method=="TEST":
@@ -181,6 +181,23 @@ def get_mask_coords(grid_shape, offset, img_shape):
     return tuple([a.flatten() for a in np.meshgrid(*coords, sparse=False, indexing='ij')])
 
 def get_extended_mask_coordsX(mask_coords, radX, img_shape):
+    """Extends mask coordinate along X-axis (structured noise reduction)
+
+    Parameters
+    ----------
+    mask_coords : tuple of 1D-numpy arrays
+        mask coordinates
+    radX : integer
+        number of pixel to extend on each side of mask_coords
+    img_shape : tupe
+        image shape
+
+    Returns
+    -------
+    tuple of 1D numpy arrays
+        extended coordinates along X-axis
+
+    """
     if radX==0:
         return mask_coords
     extended_coords = []
@@ -206,16 +223,36 @@ def get_extended_mask_coordsX(mask_coords, radX, img_shape):
     return tuple(result)
 
 def get_random_coords(patch_radius, offsets, img_shape, exclude_X = False):
-    grid_shape = 2 * np.array(patch_radius) + 1
-    n_coords = np.product(grid_shape)
-    grid_shape = tuple(grid_shape)
+    """Draws random coordinates in a limited patch around points.
+    Center point is excluded and drawn coordinate are ensured to be located within the image
+
+    Parameters
+    ----------
+    patch_radius : integer
+        radius of the patch in which random coordinate will be drawn (patch size = 2 * patch_radius + 1)
+    offsets : tuple of 1D numpy arrays
+        coordinates of reference points
+    img_shape : tuple
+        shape of the image
+    exclude_X : type
+        whether coordinate can be drawn along X-axis or not
+
+    Returns
+    -------
+    tuple of 1D numpy arrays
+        extended coordinates
+
+    """
+    patch_shape = 2 * np.array(patch_radius) + 1
+    n_coords = np.product(patch_shape)
+    patch_shape = tuple(patch_shape)
     center = n_coords // 2
     if not exclude_X:
         choices = list(range(0,center)) + list(range(center+1, n_coords))
     else:
-        choices = [i for i in range(n_coords) if np.any(np.unravel_index(i, grid_shape)[:-1]!=patch_radius[:-1])]
+        choices = [i for i in range(n_coords) if np.any(np.unravel_index(i, patch_shape)[:-1]!=patch_radius[:-1])]
     indices = np.random.choice(choices, size=offsets[0].shape[0], replace=True)
-    coords = list(np.unravel_index(indices, grid_shape))
+    coords = list(np.unravel_index(indices, patch_shape))
     for axis in range(len(offsets)):
         coords[axis] += offsets[axis] - patch_radius[axis]
         # mirror coords outside image (center on coord to avoid targeting center)
