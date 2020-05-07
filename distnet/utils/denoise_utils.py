@@ -7,7 +7,7 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["AVERAGE", "RANDOM"]
 
-def get_blind_denoising_manipulation_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0):
+def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, replacement_proba = 1):
     """masking function for self-supervised denoising.
 
     Parameters
@@ -44,6 +44,8 @@ def get_blind_denoising_manipulation_fun(method=METHOD[0], grid_shape=3, grid_ra
             mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
             output = get_output(batch, mask_coords)
             avg = average_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
+            if replacement_proba<1:
+                mask_coords = remove_random_grid_points(mask_coords, replacement_proba)
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
@@ -62,6 +64,8 @@ def get_blind_denoising_manipulation_fun(method=METHOD[0], grid_shape=3, grid_ra
                 r_patch_radius = tuple(r_patch_radius)
             mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
             output = get_output(batch, mask_coords)
+            if replacement_proba<1:
+                mask_coords = remove_random_grid_points(mask_coords, replacement_proba)
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
@@ -79,6 +83,8 @@ def get_blind_denoising_manipulation_fun(method=METHOD[0], grid_shape=3, grid_ra
             offset = get_random_offset(grid_shape_)
             mask_coords = get_mask_coords(grid_shape_, offset, image_shape)
             output = get_output(batch, mask_coords)
+            if replacement_proba<1:
+                mask_coords = remove_random_grid_points(mask_coords, replacement_proba)
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
@@ -100,6 +106,8 @@ def get_blind_denoising_manipulation_fun(method=METHOD[0], grid_shape=3, grid_ra
                 mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             mask = np.zeros(batch.shape, dtype=batch.dtype)
             mask2 = np.zeros(batch.shape, dtype=batch.dtype)
+            if replacement_proba<1:
+                mask_coords = remove_random_grid_points(mask_coords, replacement_proba)
             mask_values = np.arange(mask_coords[0].shape[0])
             np.random.shuffle(mask_values)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
@@ -130,7 +138,7 @@ def get_output(batch, mask_coords):
 
     """
     mask = np.zeros(batch.shape, dtype=batch.dtype)
-    n_pix = float(np.prod(batch.shape[1:-1]))
+    n_pix = float(np.prod(batch.shape[1:-1])) # same number on each chan, no need to include them
     mask_value = n_pix / len(mask_coords[0])
     for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
         mask_idx = (b,) + mask_coords + (c,)
@@ -179,6 +187,14 @@ def get_mask_coords(grid_shape, offset, img_shape):
         raise ValueError("offset and shape must have same rank")
     coords = [np.arange(int(np.ceil((img_shape[i]-offset[i]) / grid_shape[i]))) * grid_shape[i] + offset[i] for i in range(len(img_shape))]
     return tuple([a.flatten() for a in np.meshgrid(*coords, sparse=False, indexing='ij')])
+
+def remove_random_grid_points(mask_coords, replacement_proba):
+    n = int(replacement_proba * mask_coords[0].shape[0] + 0.5)
+    idxs = np.random.choice(mask_coords[0].shape[0], n)
+    res = list()
+    for axis in range(len(mask_coords)):
+        res.append(mask_coords[axis][idxs])
+    return tuple(res)
 
 def get_extended_mask_coordsX(mask_coords, radX, img_shape):
     """Extends mask coordinate along X-axis (structured noise reduction)
