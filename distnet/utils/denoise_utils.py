@@ -42,10 +42,10 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
             offset = get_random_offset(grid_shape_)
             mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
-            output = get_output(batch, mask_coords)
-            avg = average_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
             if skip_pixel_proba>0:
                 mask_coords = remove_random_grid_points(mask_coords, skip_pixel_proba)
+            output = get_output(batch, mask_coords)
+            avg = average_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
@@ -63,9 +63,9 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             if isinstance(r_patch_radius, list):
                 r_patch_radius = tuple(r_patch_radius)
             mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
-            output = get_output(batch, mask_coords)
             if skip_pixel_proba>0:
                 mask_coords = remove_random_grid_points(mask_coords, skip_pixel_proba)
+            output = get_output(batch, mask_coords)
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
