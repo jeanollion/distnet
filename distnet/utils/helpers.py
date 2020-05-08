@@ -201,19 +201,67 @@ def displayProgressBar(max): # this progress bar is compatible with google colab
         out.update(progress(currentProgress[0]))
     return callback
 
-def predict_average_flip(model, batch, list_axis=[1, 2, (1,2)]):
-    if not isinstance(list_axis, list):
-        list_axis = [list_axis]
-    if isinstance(batch, list):
-        new_batch = [_concat_with_flips(b) for b in batch]
+def predict_average_flip_rotate(model, batch, rotate90 = True, list_flips=[0,1,2]):
+    if not isinstance(list_flips, list):
+        list_flips = [list_flips]
+    batch_list = _append_flip_and_rotate_list(batch, list_flips, rotate90)
+    predicted_list = [model.predict(b) for b in batch_list]
+    # transform back
+    if isinstance(predicted_list[0], list):
+        predicted_list = _transpose(predicted_list)
+        return [_reverse_and_mean(l, rotate90, list_flips) for l in predicted_list]
     else:
-        new_batch = _concat_with_flips(batch)
-    prediction_batch = model.predict(new_batch)
-    prediction_split = np.split(prediction_batch, len(list_axis)+1, axis=0)
-    for i in range(len(list_axis)):
-        prediction_split[i+1] = np.flip(prediction_split[i+1], axis=list_axis[i])
-    return np.mean(prediction_split, axis=0)
+        return _reverse_and_mean(predicted_list, rotate90, list_flips)
 
-def _concat_with_flips(batch, list_axis=[1, 2, (1,2)]):
-    flips = [np.flip(batch, axis=ax) for ax in list_axis]
-    return np.concatenate([batch]+flips, axis=0)
+def _append_flip_and_rotate_list(batch, rotate90=True, list_flips=[0,1,2]):
+    if isinstance(batch, (tuple, list)):
+        batch_list = []
+        for i in range(len(batch)):
+            batch_list.append(_append_flip_and_rotate(batch, list_flips, rotate90))
+        return _transpose(batch_list)
+    else:
+        return _append_flip_and_rotate(batch, list_flips, rotate90)
+
+def _append_flip_and_rotate(batch, rotate90=True, list_flips=[0,1,2]):
+    trans = [batch] + [AUG_FUN_2D[flip+1](batch) for flip in list_flips]
+    if rotate90:
+        trans +=[AUG_FUN_2D[4](batch)]
+        trans = trans + [AUG_FUN_2D[i+5](batch) for i in list_flips]
+    return trans
+
+def _reverse_and_mean(image_list, rotate90 = True, list_flips=[0,1,2]):
+    n_flips = len(list_flips)
+    for idx, i in enumerate(list_flips):
+        image_list[idx+1] = AUG_FUN_REV_2D[i+1](image_list[idx+1])
+    if rotate90:
+        image_list[n_flips+1] = AUG_FUN_REV_2D[4](image_list[n_flips+1])
+        for idx, i in enumerate(list_flips):
+            img_idx = idx + n_flips + 2
+            image_list[img_idx] = AUG_FUN_REV_2D[i + 5](image_list[img_idx])
+    return np.mean(image_list, axis=0)
+
+def _transpose(list_of_list):
+    size1=len(list_of_list)
+    size2=len(list_of_list[0])
+    return [ [ batch_list[i][j] for i in range(size1)] for j in range(size2) ]
+
+AUG_FUN_2D = [
+    lambda img : img,
+    lambda img : np.flip(img, axis=1),
+    lambda img : np.flip(img, axis=2),
+    lambda img : np.flip(img, axis=(1, 2)),
+    lambda img : np.rot90(img, k=1, axes=(1,2)),
+    lambda img : np.rot90(img, k=3, axes=(1,2)), # rot + flip0
+    lambda img : np.rot90(np.flip(img, axis=2), k=1, axes=(1,2)),
+    lambda img : np.rot90(np.flip(img, axis=(1, 2)), k=1, axes=(1,2))
+]
+AUG_FUN_REV_2D = [
+    lambda img : img,
+    lambda img : np.flip(img, axis=1),
+    lambda img : np.flip(img, axis=2),
+    lambda img : np.flip(img, axis=(1, 2)),
+    lambda img : np.rot90(img, k=3, axes=(1,2)),
+    lambda img : np.rot90(img, k=1, axes=(1,2)), # rot + flip0
+    lambda img : np.rot90(np.flip(img, axis=2), k=1, axes=(1,2)),
+    lambda img : np.rot90(np.flip(img, axis=(1, 2)), k=3, axes=(1,2))
+]
