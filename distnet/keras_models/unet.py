@@ -313,15 +313,16 @@ def get_distnet_model(image_shape=(256, 32), n_contractions=4, filters=128, max_
 def get_unet_model(image_shape, n_contractions, filters, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1, dropout_contraction_levels=[], dropout_levels=0.2, batch_norm=False):
     return get_custom_unet_model(image_shape=image_shape, n_contractions=n_contractions, filters=filters, max_filters=0, n_outputs=n_outputs, n_output_channels=n_output_channels, out_activations=out_activations, anisotropic_conv=False, n_inputs=n_inputs, n_input_channels=n_input_channels, use_1x1_conv_after_concat=False, n_1x1_conv_after_decoder=0, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels, batch_norm=batch_norm)
 
-def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1,  anisotropic_conv=True, upsampling_conv_kernel=2, halve_filters_last_conv=False, use_self_attention=False, add_attention=False, num_attention_heads=1, positional_encoding=True, output_attention_weights=False, n_conv_layer_levels_encoder=2, n_conv_layer_levels_decoder=2, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, use_transpose_conv=False, upsampling_filter_factor_levels=1, batch_norm=False, omit_skip_connection_levels=[], activation='relu', n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True, dropout_contraction_levels=[], dropout_levels=0.2, spatial_dropout=True, residual=False, concatenate_outputs = False):
+def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1,  anisotropic_conv=True, upsampling_conv_kernel=2, halve_filters_last_conv=False, use_self_attention=False, add_attention=False, num_attention_heads=1, positional_encoding=True, output_attention_weights=False, n_conv_layer_levels_encoder=2, n_conv_layer_levels_decoder=2, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True, use_transpose_conv=False, upsampling_filter_factor_levels=1, batch_norm=False, omit_skip_connection_levels=[], activation='relu', n_stack=1, stacked_intermediate_outputs=True, stacked_skip_conection=True, dropout_contraction_levels=[], dropout_levels=0.2, spatial_dropout=True, residual=None, concatenate_outputs = False):
     n_output_channels = ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = ensure_multiplicity(n_inputs, n_input_channels)
     filters = ensure_multiplicity(2, filters)
     max_filters =  ensure_multiplicity(2, max_filters)
     dropout_levels = ensure_multiplicity(len(dropout_contraction_levels), dropout_levels)
-    if residual:
-        assert n_inputs==1 and n_outputs==1 and n_input_channels==n_output_channels, "if residual modi is not, only 1 input and 1 output with same number of channels are supported for now"
+    if residual is not None:
+        for oidx, iidx in residual.items():
+            assert iidx<n_inputs and oidx<n_outputs and n_input_channels[iidx]==n_output_channels[oidx], "invalid residual configuration: output and input indexes must exist and number of channel must be equal between input and output"
     if n_inputs>1:
         input = [Input(shape = image_shape+(n_input_channels[i],), name="input"+str(i)) for i in range(n_inputs)]
     else:
@@ -329,17 +330,31 @@ def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n
 
     encoders = [UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, n_conv_layer_levels_encoder, halve_filters_last_conv, num_attention_heads if use_self_attention else 0, add_attention, positional_encoding=positional_encoding, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels, spatial_dropout=spatial_dropout, batch_norm=batch_norm, activation=activation, name="encoder{}".format(i)) for i in range(n_stack)]
     decoders = [UnetDecoder(n_contractions, filters[1], max_filters[1], image_shape, anisotropic_conv, n_conv_layer_levels_decoder, halve_filters_last_conv, n_last_1x1_conv=n_1x1_conv_after_decoder, use_1x1_conv_after_concat=use_1x1_conv_after_concat, omit_skip_connection_levels=omit_skip_connection_levels, upsampling_conv_kernel=upsampling_conv_kernel, use_transpose_conv=use_transpose_conv, upsampling_filter_factor_levels=upsampling_filter_factor_levels, batch_norm=batch_norm, activation=activation, name="decoder{}".format(i)) for i in range(n_stack)]
-
     def get_output(layer, rank=0):
         name = "" if rank==0 else "_i"+str(rank)+"_"
         if n_outputs>1:
-            return [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+name+str(i))(layer) for i in range(n_outputs)]
+            outputs = [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+name+str(i))(layer) for i in range(n_outputs)]
+            if residual is not None:
+                for oidx in range(n_outputs):
+                    if oidx in residual:
+                        input_idx = residual[oidx]
+                        if n_inputs==1:
+                            if input_idx==0:
+                                outputs[oidx]  =  outputs[oidx] + input
+                        else:
+                          outputs[oidx]  =  outputs[oidx] + input[input_idx]
+            return outputs
         else:
             out =  Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output"+name)(layer)
-            if residual:
-                return out + input
-            else:
-                return out
+            if residual is not None and 0 in residual:
+                input_idx = residual[0]
+                if n_inputs==1:
+                    if input_idx==0:
+                        return out + input
+                else:
+                    return out + input[input_idx]
+            return out
+
     def get_intermediate_input(decoded_1, decoded_2, intermediate_outputs, rank):
         if (not stacked_skip_conection or decoded_1 is None) and not stacked_intermediate_outputs:
             return decoded_2
@@ -373,57 +388,6 @@ def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n
     if use_self_attention and output_attention_weights:
         all_outputs.append(attention_weights)
     return Model(input, flatten_list(all_outputs), name="UNet")
-
-def get_unet_plus_plus_model(image_shape, n_contractions, filters=64, max_filters=0, anisotropic_conv=True, n_outputs=1, n_output_channels=1, out_activations=["linear"], n_inputs=1, n_input_channels=1, n_conv_layer_levels=2, use_self_attention=False, num_attention_heads=1, dropout_contraction_levels=[], dropout_levels=0.2, decoder_contraction_level=[]):
-    n_output_channels = ensure_multiplicity(n_outputs, n_output_channels)
-    out_activations = ensure_multiplicity(n_outputs, out_activations)
-    n_input_channels = ensure_multiplicity(n_inputs, n_input_channels)
-    filters = ensure_multiplicity(2, filters)
-    max_filters =  ensure_multiplicity(2, max_filters)
-    dropout_levels = ensure_multiplicity(len(dropout_contraction_levels), dropout_levels)
-    encoder = UnetEncoder(n_contractions, filters[0], max_filters[0], image_shape, anisotropic_conv, n_conv_layer_levels, num_attention_heads if use_self_attention else 0, add_attention=False, positional_encoding=True, dropout_contraction_levels=dropout_contraction_levels, dropout_levels=dropout_levels, name="encoder")
-    if decoder_contraction_level is None or len(decoder_contraction_level)==0:
-        decoder_contraction_level = list(range(n_contractions))
-    else:
-        decoder_contraction_level = [l if l>=0 else n_contractions + l for l in decoder_contraction_level]
-        decoder_contraction_level.sort()
-        print(decoder_contraction_level)
-        assert n_contractions-1 in decoder_contraction_level, "last contraction level must be decoded"
-        assert all([l>=0 and l<=n_contractions for l in decoder_contraction_level]), "contraction level should be <={}".format(n_contractions)
-    decoders = [UnetDecoder(c+1, filters[1], max_filters[1], image_shape, anisotropic_conv, n_last_1x1_conv=1, use_1x1_conv_after_concat=True, name="decoder{}".format(c)) for c in decoder_contraction_level]
-
-    if n_inputs>1:
-        input = [Input(shape = image_shape+(n_input_channels[i],), name="input"+str(i)) for i in range(n_inputs)]
-    else:
-        input = Input(shape = image_shape+(n_input_channels[0],), name="input")
-
-    if use_self_attention and num_attention_heads>0:
-        encoded, residuals, attention_weights = encoder.encode(input, None)
-    else:
-        encoded, residuals = encoder.encode(input, None)
-    residuals.append(encoded)
-
-    decoded = list()
-    for i, (d_idx, decoder) in enumerate(zip(decoder_contraction_level, decoders)):
-        all_residuals = list()
-        for r_idx in range(0, d_idx+1):
-            current_residuals = [residuals[r_idx]]
-            for prev_i in range(i-1, -1, -1):
-                dec = decoded[prev_i]
-                if len(dec)>r_idx: # decoder yields enough residuals
-                    current_residuals.append(dec[-(r_idx+1)])
-            all_residuals.append(current_residuals)
-            #getshape = lambda l : [getshape(r) if type(r)==list else r.shape for r in l]
-            #print("decoder: {}, residual: {}: residual shapes: {}".format(d_idx, r_idx, getshape(current_residuals)))
-        decoded.append(decoders[i].decode(residuals[d_idx+1], all_residuals, True))
-        #print("decoder: {}, decoded shapes: {}".format(d_idx,  getshape(decoded[-1])))
-    def get_output(layer, rank=0):
-        if n_outputs>1:
-            return [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output{}_{}".format(i, rank))(layer) for i in range(n_outputs)]
-        else:
-            return Conv2D(filters=n_output_channels[0], kernel_size=(1, 1), activation=out_activations[0], name="output_{}".format(rank))(layer)
-    outputs = [get_output(d[-1], i) for i,d in enumerate(decoded)]
-    return Model(input, outputs)
 
 def get_attention_tracking_model(image_shape, n_contractions, filters=[32, 64], max_filters=1024, n_outputs=1, n_output_channels=1, out_activations=["linear"], anisotropic_conv=False, self_attention=False, add_attention=False, num_attention_heads=1, output_attention_weights=False, n_1x1_conv_after_decoder=0, use_1x1_conv_after_concat=True):
     n_output_channels = ensure_multiplicity(n_outputs, n_output_channels)

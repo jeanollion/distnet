@@ -6,24 +6,20 @@ from .lovasz_losses_tf import lovasz_hinge, lovasz_softmax
 from .helpers import convert_probabilities_to_logits, ensure_multiplicity
 
 
-def loss_laplace():
-    C = np.log(2.0)
-    E = K.epsilon()
+def loss_laplace(epsilon = 1e-3):
     def loss_fun(y_true, y_pred):
         n_chan = K.shape(y_true)[-1]
         mu = y_pred[...,:n_chan]
-        sigma = y_pred[...,n_chan:] + E
-        return K.abs( ( mu - y_true ) / sigma ) + K.log( sigma ) + C
+        sigma = y_pred[...,n_chan:] + epsilon
+        return K.abs( ( mu - y_true ) / sigma ) + K.log( sigma )
     return loss_fun
 
-def loss_gauss():
-    C = np.log(2.0 * np.pi)
-    E = K.epsilon()
+def loss_gauss(epsilon = 1e-3):
     def loss_fun(y_true, y_pred):
         n_chan = K.shape(y_true)[-1]
         mu = y_pred[...,:n_chan]
-        sigma2 = y_pred[...,n_chan:] + E
-        return 0.5 * ( K.square( mu - y_true ) / sigma2 + K.log( sigma2 ) + C )
+        sigma2 = y_pred[...,n_chan:] + epsilon
+        return 0.5 * ( K.square( mu - y_true ) / sigma2 + K.log( sigma2 ) )
     return loss_fun
 
 def mother_machine_mask(shape=(256, 32), mask_size=40, lower_end_only=True, dtype=np.float32):
