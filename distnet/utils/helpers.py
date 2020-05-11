@@ -243,7 +243,7 @@ def _reverse_and_mean(image_list, rotate90 = True, list_flips=[0,1,2]):
 def _transpose(list_of_list):
     size1=len(list_of_list)
     size2=len(list_of_list[0])
-    return [ [ batch_list[i][j] for i in range(size1)] for j in range(size2) ]
+    return [ [ list_of_list[i][j] for i in range(size1)] for j in range(size2) ]
 
 AUG_FUN_2D = [
     lambda img : img,
