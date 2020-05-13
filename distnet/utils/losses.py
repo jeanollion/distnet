@@ -10,7 +10,9 @@ def loss_laplace(epsilon = 1e-3):
     def loss_fun(y_true, y_pred):
         n_chan = K.shape(y_true)[-1]
         mu = y_pred[...,:n_chan]
-        sigma = y_pred[...,n_chan:] + epsilon
+        sigma = y_pred[...,n_chan:]
+        if epsilon>0:
+            sigma+=epsilon
         return K.abs( ( mu - y_true ) / sigma ) + K.log( sigma )
     return loss_fun
 
@@ -18,7 +20,9 @@ def loss_gauss(epsilon = 1e-3):
     def loss_fun(y_true, y_pred):
         n_chan = K.shape(y_true)[-1]
         mu = y_pred[...,:n_chan]
-        sigma2 = y_pred[...,n_chan:] + epsilon
+        sigma2 = y_pred[...,n_chan:]
+        if epsilon>0:
+            sigma2+=epsilon
         return 0.5 * ( K.square( mu - y_true ) / sigma2 + K.log( sigma2 ) )
     return loss_fun
 
