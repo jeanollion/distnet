@@ -197,7 +197,9 @@ class UnetDecoder():
             self.omit_skip_connection_levels = [l if l>=0 else n_up + l for l in omit_skip_connection_levels]
         for layer_idx in range(n_up):
             self._make_layer(self._get_n_filters(layer_idx), layer_idx)
-        self.last_convs = [Conv2D(n_filters, (1, 1), padding='same', activation=self.activation, kernel_initializer = 'he_normal', name = "{}_conv1x1_{}".format(self.name,i) if self.name else None) for i in range(n_last_1x1_conv)]
+        if not isinstance(n_last_1x1_conv, (list, tuple)):
+            n_last_1x1_conv=[n_last_1x1_conv]
+        self.last_convs = [ [Conv2D(n_filters, (1, 1), padding='same', activation=self.activation, kernel_initializer = 'he_normal', name = "{}_conv1x1_{}_{}".format(self.name,oidx,i) if self.name else None) for i in range(n_last_1x1_conv[oidx])] for oidx in range(len(n_last_1x1_conv)) ]
 
     def _upsampling_block(self, filters, layer_idx):
         filter_factor = self.upsampling_filter_factor_levels[layer_idx]
@@ -241,8 +243,15 @@ class UnetDecoder():
             if return_all:
                 all_activations.append(last_input)
         if len(self.last_convs)>0:
-            for conv in self.last_convs:
-                last_input = conv(last_input)
+            outputs = []
+            for oidx, convs in enumerate(self.last_convs):
+                output = last_input
+                for conv in convs:
+                    output = conv(output)
+                outputs.append(output)
+            if len(outputs)==1:
+                outputs=outputs[0]
+            last_input = outputs
             if return_all:
                 all_activations[-1] = last_input
         if return_all:
@@ -333,7 +342,11 @@ def get_custom_unet_model(image_shape, n_contractions, filters, max_filters=0, n
     def get_output(layer, rank=0):
         name = "" if rank==0 else "_i"+str(rank)+"_"
         if n_outputs>1:
-            outputs = [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+name+str(i))(layer) for i in range(n_outputs)]
+            if isinstance(layer, list):
+                assert len(layer) == n_outputs, "number of output branches must coïncide with output number"
+                outputs = [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+name+str(i))(layer[i]) for i in range(n_outputs)]
+            else:
+                outputs = [Conv2D(filters=n_output_channels[i], kernel_size=(1, 1), activation=out_activations[i], name="output"+name+str(i))(layer) for i in range(n_outputs)]
             if residual is not None:
                 for oidx in range(n_outputs):
                     if oidx in residual:
