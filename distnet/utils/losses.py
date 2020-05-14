@@ -5,6 +5,11 @@ import numpy as np
 from .lovasz_losses_tf import lovasz_hinge, lovasz_softmax
 from .helpers import convert_probabilities_to_logits, ensure_multiplicity
 
+def mse(y_true, y_pred):
+    return K.square(y_pred - y_true)
+
+def mae(y_true, y_pred):
+    return K.abs(y_pred - y_true)
 
 def loss_laplace(epsilon = 1e-3):
     def loss_fun(y_true, y_pred):
