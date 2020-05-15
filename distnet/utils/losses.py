@@ -11,7 +11,7 @@ def mse(y_true, y_pred):
 def mae(y_true, y_pred):
     return K.abs(y_pred - y_true)
 
-def loss_laplace(epsilon = 1e-3):
+def loss_laplace(epsilon = 1e-6):
     def loss_fun(y_true, y_pred):
         n_chan = K.shape(y_true)[-1]
         mu = y_pred[...,:n_chan]
@@ -21,7 +21,7 @@ def loss_laplace(epsilon = 1e-3):
         return K.abs( ( mu - y_true ) / sigma ) + K.log( sigma )
     return loss_fun
 
-def loss_gauss(epsilon = 1e-3):
+def loss_gauss(epsilon = 1e-6):
     def loss_fun(y_true, y_pred):
         n_chan = K.shape(y_true)[-1]
         mu = y_pred[...,:n_chan]
