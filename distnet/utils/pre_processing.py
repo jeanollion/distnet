@@ -290,14 +290,15 @@ def random_scaling(img, center=None, scale=None, alpha_range=[-0.3, 0.17], beta_
     center = center + scale * uniform(beta_range[0], beta_range[1])
     return (img - center) * factor
 
-def add_gaussian_noise(img, sigma=[0, 0.1]):
+def add_gaussian_noise(img, sigma=[0, 0.1], scale_sigma_to_image_range=True):
     if is_list(sigma):
         if len(sigma)==2:
             sigma = uniform(sigma[0], sigma[1])
         else:
             raise ValueError("Sigma  should be either a list/tuple of lenth 2 or a scalar")
-    sigma *= (img.max() - img.min())
-    gauss = np.random.normal(0,sigma,img.shape).reshape(img.shape)
+    if scale_sigma_to_image_range:
+        sigma *= (img.max() - img.min())
+    gauss = np.random.normal(0,sigma,img.shape)
     return img + gauss
 
 def add_speckle_noise(img, sigma=[0, 0.1]):
@@ -307,16 +308,17 @@ def add_speckle_noise(img, sigma=[0, 0.1]):
         else:
             raise ValueError("Sigma  should be either a list/tuple of lenth 2 or a scalar")
     min = img.min()
-    gauss = np.random.normal(1, sigma, img.shape).reshape(img.shape)
+    gauss = np.random.normal(1, sigma, img.shape)
     return (img - min) * gauss + min
 
-def add_poisson_noise(img, noise_intensity=[0, 0.1]):
+def add_poisson_noise(img, noise_intensity=[0, 0.1], adjust_intensity=True):
     if is_list(noise_intensity):
         if len(noise_intensity)==2:
             noise_intensity = uniform(noise_intensity[0], noise_intensity[1])
         else:
             raise ValueError("noise_intensity should be either a list/tuple of lenth 2 or a scalar")
-    noise_intensity /= 10.0 # so that intensity is comparable to gaussian sigma
+    if adjust_intensity:
+        noise_intensity /= 10.0 # so that intensity is comparable to gaussian sigma
     min = img.min()
     max = img.max()
     img = (img - min) / (max - min)
