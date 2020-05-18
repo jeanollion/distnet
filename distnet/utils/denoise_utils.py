@@ -5,6 +5,7 @@ from numpy.random import randint
 import itertools
 from .helpers import ensure_multiplicity
 
+
 METHOD = ["AVERAGE", "RANDOM"]
 
 def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, skip_pixel_proba = 0):
@@ -354,3 +355,59 @@ def average_batch(batch, radius=1, exclude_X=False):
     else:
         raise ValueError("Only 1D, 2D or 3D arrays supported")
     return convolve(batch, ker, mode ="mirror")
+
+
+import tensorflow as tf
+# color denoising -> adapted from: https://github.com/NVlabs/selfsupervised-denoising/blob/master/selfsupervised_denoising.py
+
+def batch_vtmv(v, m): # Batched (v^T * M * v).
+    return tf.reduce_sum(v[..., :, tf.newaxis] * v[..., tf.newaxis, :] * m, axis=[-2, -1])
+
+def computeStS(sigma_x):
+    # Calculate A^T * A
+    c00 = sigma_x[..., 0]**2 + sigma_x[..., 1]**2 + sigma_x[..., 2]**2 # NHW
+    c01 = sigma_x[..., 1]*sigma_x[..., 3] + sigma_x[..., 2]*sigma_x[..., 4]
+    c02 = sigma_x[..., 2]*sigma_x[..., 5]
+    c11 = sigma_x[..., 3]**2 + sigma_x[..., 4]**2
+    c12 = sigma_x[..., 4]*sigma_x[..., 5]
+    c22 = sigma_x[..., 5]**2
+    c0 = tf.stack([c00, c01, c02], axis=-1) # NHW3
+    c1 = tf.stack([c01, c11, c12], axis=-1) # NHW3
+    c2 = tf.stack([c02, c12, c22], axis=-1) # NHW3
+    return tf.stack([c0, c1, c2], axis=-1) # NHW33
+
+def color_gauss_loss(y_true, y_pred, sigma_x, sigma2_n, regularization=False, dtype=tf.float32):
+    """loss for normal distribution of color image.
+    Adapted from Laine et al. 2019
+    https://github.com/NVlabs/selfsupervised-denoising/blob/master/selfsupervised_denoising.py
+
+    Parameters
+    ----------
+    y_true : tensor NHW3
+        noisy input
+    y_pred : tensor NHW3
+        predicted clean values
+    sigma_x : tensor NHW6
+        std predictions (for each color channel as well as covariances)
+    sigma2_n : tensor NHW3
+        std of noise for each color channel
+    regularization : bool
+        loss regularization
+    dtype : tensorflow datatype
+
+    Returns
+    -------
+    loss tensor NHW
+
+    """
+    I = tf.eye(num_channels, batch_shape=[1, 1, 1], dtype=dtype)
+    sigma2_n_ = sigma2_n[..., tf.newaxis] * I # NHWC1 * NHWCC = NHWCC
+    sigma_y = computeStS(sigma_x) + sigma2_n_ # NHWCC, total covariance matrix. Cannot be singular because sigma_n is at least a small diagonal.
+    sigma_y_inv = tf.linalg.inv(sigma_y) # NHWCC
+    l2 = batch_vtmv(y_true - y_pred, sigma_y_inv) # NHW
+    dets = tf.linalg.det(sigma_y) # NHW
+    #dets = tf.maximum(zero64, dets) # NHW. Avoid division by zero and negative square roots. # we predict exp(sigma) so no problem
+    loss = 0.5 * ( l2 + tf.log(dets) ) # NHW
+    if regularization:
+        loss = loss - 0.1 * tf.reduce_mean(sigma2_n, axis=-1) # Balance regularization.
+    return loss
