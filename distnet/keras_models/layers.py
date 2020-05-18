@@ -1,6 +1,6 @@
 from tensorflow import pad
 from tensorflow.keras.layers import Layer, GlobalAveragePooling2D, Reshape, Conv2D, Multiply
-from ..utils.denoise_utils import get_nd_gaussian_kernel
+from distnet.utils.denoise_utils import get_nd_gaussian_kernel
 
 class ReflectionPadding2D(Layer):
   def __init__(self, padding=(1, 1), **kwargs):

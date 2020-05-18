@@ -436,7 +436,7 @@ def get_valid_padding_crop(n_contractions, n_conv_e, n_conv_d, size=0, conv_radi
     for i in range(n_contractions):
         start_size = size_residual[-1] if i==0 else size_concat[-1] - 2 * n_conv_d_rev[i] * conv_radius[1]
         size_concat.append(start_size * 2)
-    output_crop = size - size_concat[-1] - 2 * n_conv_d_rev[-1] * conv_radius[1]
+    output_crop = ( size - ( size_concat[-1] - 2 * n_conv_d_rev[-1] * conv_radius[1] ) ) // 2
     size_concat = size_concat[::-1]
     crop = [ (size_residual[i] - size_concat[i] ) //2 for i in range(n_contractions)]
     return crop, output_crop
