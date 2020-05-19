@@ -35,7 +35,7 @@ class SelfAttention(Model):
         if self.positional_encoding:
             x_index = tf.range(self.spatial_dim, dtype=tf.int32)
             pos_emb = self.pos_embedding(x_index) # (spa_dim, d_model)
-            pos_emb = tf.reshape(pos_emb, (1, self.spatial_dims[0], self.spatial_dims[1], self.d_model)) #for broadcasting purpose
+            pos_emb = tf.reshape(pos_emb, (self.spatial_dims[0], self.spatial_dims[1], self.d_model)) #for broadcasting purpose
             x = x + pos_emb # broadcast
 
         q = self.wq(x)  # (batch_size, *spa_dims, d_model)
