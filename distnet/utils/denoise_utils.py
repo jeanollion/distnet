@@ -400,7 +400,7 @@ def color_gauss_loss(y_true, y_pred, sigma_x, sigma2_n, regularization=False, dt
     loss tensor NHW
 
     """
-    I = tf.eye(num_channels, batch_shape=[1, 1, 1], dtype=dtype)
+    I = tf.eye(3, batch_shape=[1, 1, 1], dtype=dtype)
     sigma2_n_ = sigma2_n[..., tf.newaxis] * I # NHWC1 * NHWCC = NHWCC
     sigma_y = computeStS(sigma_x) + sigma2_n_ # NHWCC, total covariance matrix. Cannot be singular because sigma_n is at least a small diagonal.
     sigma_y_inv = tf.linalg.inv(sigma_y) # NHWCC
