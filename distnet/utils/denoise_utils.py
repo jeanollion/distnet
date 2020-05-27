@@ -407,7 +407,7 @@ def color_gauss_loss(y_true, y_pred, sigma_x, sigma2_n, regularization=False, dt
     l2 = batch_vtmv(y_true - y_pred, sigma_y_inv) # NHW
     dets = tf.linalg.det(sigma_y) # NHW
     #dets = tf.maximum(zero64, dets) # NHW. Avoid division by zero and negative square roots. # we predict exp(sigma) so no problem
-    loss = 0.5 * ( l2 + tf.log(dets) ) # NHW
+    loss = 0.5 * ( l2 + K.log(dets) ) # NHW
     if regularization:
         loss = loss - 0.1 * tf.reduce_mean(sigma2_n, axis=-1) # Balance regularization.
     return loss
