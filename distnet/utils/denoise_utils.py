@@ -8,7 +8,7 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["AVERAGE", "RANDOM"]
 
-def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, skip_pixel_proba = 0):
+def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proba = 0, drop_probability_fun=None):
     """masking function for self-supervised denoising.
 
     Parameters
@@ -39,112 +39,111 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             raise ValueError("Average radius must be in [1, 2, 3]")
         def fun(batch):
             image_shape = batch.shape[1:-1]
+            n_pix = float(np.prod(image_shape))
             grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
-            grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
-            offset = get_random_offset(grid_shape_)
-            mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
-            if skip_pixel_proba>0:
-                mask_coords = remove_random_grid_points(mask_coords, skip_pixel_proba)
-            output = get_output(batch, mask_coords)
             avg = average_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
-            if mask_X_radius>0:
-                mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
-            for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
-                mask_idx = (b,) + mask_coords + (c,)
-                batch[mask_idx] = avg[mask_idx]
-            return output
+            output = np.copy(batch) # batch will be modified
+            mask = np.zeros_like(output)
+            for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+                image = batch[b,...,c]
+                avg_image = avg[b,...,c]
+                mask_image = mask[b,...,c]
+                grid_shape_r = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
+                offset = get_random_offset(grid_shape_r)
+                mask_coords = get_mask_coords(grid_shape_r , offset, image_shape)
+                if drop_grid_proba>0:
+                    if drop_probability_fun is None:
+                        mask_coords = remove_random_grid_points(mask_coords, drop_grid_proba)
+                    else:
+                        mask_coords = remove_grid_points_probability(mask_coords, drop_grid_proba, image, drop_probability_fun)
+                mask_image[mask_coords] =  n_pix / len(mask_coords[0])
+                if mask_X_radius>0:
+                    mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape_[-1]//2, mask_X_radius), image_shape)
+                image[mask_coords] = avg_image[mask_coords] # masking
+            return np.concatenate([output, mask], axis=-1)
         return fun
     elif method==METHOD[1]:
         def fun(batch):
             image_shape = batch.shape[1:-1]
+            n_pix = float(np.prod(image_shape))
             grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
-            grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
-            offset = get_random_offset(grid_shape_)
             r_patch_radius = ensure_multiplicity(len(image_shape), radius)
             if isinstance(r_patch_radius, list):
                 r_patch_radius = tuple(r_patch_radius)
-            mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
-            if skip_pixel_proba>0:
-                mask_coords = remove_random_grid_points(mask_coords, skip_pixel_proba)
-            output = get_output(batch, mask_coords)
-            if mask_X_radius>0:
-                mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
-            for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+            output = np.copy(batch) # batch will be modified
+            mask = np.zeros_like(output)
+            for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+                image = batch[b,...,c]
+                mask_image = mask[b,...,c]
+                grid_shape_r = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
+                offset = get_random_offset(grid_shape_r)
+                mask_coords = get_mask_coords(grid_shape_r , offset, image_shape)
+                if drop_probability_fun is None:
+                    mask_coords = remove_random_grid_points(mask_coords, drop_grid_proba)
+                else:
+                    mask_coords = remove_grid_points_probability(mask_coords, drop_grid_proba, image, drop_probability_fun)
+                mask_image[mask_coords] =  n_pix / len(mask_coords[0])
+                if mask_X_radius>0:
+                    mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
                 replacement_coords = get_random_coords(r_patch_radius, mask_coords, image_shape, exclude_X = mask_X_radius>0)
-                mask_idx = (b,) + mask_coords + (c,)
-                replacement_idx = (b,) + replacement_coords + (c,)
-                batch[mask_idx] = batch[replacement_idx]
-            return output
-        return fun
-    elif method=="ZERO":
-        def fun(batch):
-            image_shape = batch.shape[1:-1]
-            grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
-            grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
-            offset = get_random_offset(grid_shape_)
-            mask_coords = get_mask_coords(grid_shape_, offset, image_shape)
-            output = get_output(batch, mask_coords)
-            if skip_pixel_proba>0:
-                mask_coords = remove_random_grid_points(mask_coords, skip_pixel_proba)
-            if mask_X_radius>0:
-                mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
-            for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
-                mask_idx = (b,) + mask_coords + (c,)
-                batch[mask_idx] = 0
-            return output
+                image[mask_coords] = image[replacement_coords] # masking
+            return np.concatenate([output, mask], axis=-1)
         return fun
     elif method=="TEST":
         def fun(batch):
             image_shape = batch.shape[1:-1]
             grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
             grid_shape_ = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
-            offset = get_random_offset(grid_shape_)
             r_patch_radius = ensure_multiplicity(len(image_shape), radius)
             if isinstance(r_patch_radius, list):
                 r_patch_radius = tuple(r_patch_radius)
-            mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
-            if mask_X_radius>0:
-                mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
             mask = np.zeros(batch.shape, dtype=batch.dtype)
             mask2 = np.zeros(batch.shape, dtype=batch.dtype)
-            if skip_pixel_proba>0:
-                mask_coords = remove_random_grid_points(mask_coords, skip_pixel_proba)
-            mask_values = np.arange(mask_coords[0].shape[0])
-            np.random.shuffle(mask_values)
-            for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+            for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+                image = batch[b,...,c]
+                mask_image = mask[b,...,c]
+                mask2_image = mask2[b,...,c]
+                offset = get_random_offset(grid_shape_)
+                mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
+                if mask_X_radius>0:
+                    mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
+                if drop_probability_fun is None:
+                    mask_coords = remove_random_grid_points(mask_coords, drop_grid_proba)
+                else:
+                    mask_coords = remove_grid_points_probability(mask_coords, drop_grid_proba, image, drop_probability_fun)
+                mask_values = np.arange(mask_coords[0].shape[0])
+                np.random.shuffle(mask_values)
                 replacement_coords = get_random_coords(r_patch_radius, mask_coords, image_shape, exclude_X=mask_X_radius>0)
-                mask_idx = (b,) + mask_coords + (c,)
-                mask[mask_idx] = mask_values
-                replacement_idx = (b,) + replacement_coords + (c,)
-                mask2[replacement_idx] = mask_values
+                mask_image[mask_coords] = mask_values
+                mask2_image[replacement_coords] = mask_values
             return np.concatenate([mask2, mask], axis=-1)
         return fun
     else:
         raise ValueError("Invalid method")
 
-def get_output(batch, mask_coords):
-    """Return the output of the blind denoising function
-
-    Parameters
-    ----------
-    batch : numpy array
-        format NYXC
-    mask_coords : tuple of 1D-numpy arrays
-        coordinates of the pixels to be masked (grid)
-
-    Returns
-    -------
-    numpy array
-        batch
-
-    """
-    mask = np.zeros(batch.shape, dtype=batch.dtype)
-    n_pix = float(np.prod(batch.shape[1:-1])) # same number on each chan, no need to include them
-    mask_value = n_pix / len(mask_coords[0])
-    for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
-        mask_idx = (b,) + mask_coords + (c,)
-        mask[mask_idx] = mask_value
-    return np.concatenate([batch, mask], axis=-1)
+# def get_output(batch, mask_coords):
+#     """Return the output of the blind denoising function
+#
+#     Parameters
+#     ----------
+#     batch : numpy array
+#         format NYXC
+#     mask_coords : tuple of 1D-numpy arrays
+#         coordinates of the pixels to be masked (grid)
+#
+#     Returns
+#     -------
+#     numpy array
+#         batch
+#
+#     """
+#     mask = np.zeros(batch.shape, dtype=batch.dtype)
+#     n_pix = float(np.prod(batch.shape[1:-1])) # same number on each chan, no need to include them
+#     mask_value = n_pix / len(mask_coords[0])
+#     for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+#         mask_idx = (b,) + mask_coords + (c,)
+#         mask[mask_idx] = mask_value
+#     return np.concatenate([batch, mask], axis=-1)
 
 def random_increase_grid_shape(random_increase_shape, grid_shape):
     """Randomly increase the grid spacing in each direction
@@ -189,13 +188,51 @@ def get_mask_coords(grid_shape, offset, img_shape):
     coords = [np.arange(int(np.ceil((img_shape[i]-offset[i]) / grid_shape[i]))) * grid_shape[i] + offset[i] for i in range(len(img_shape))]
     return tuple([a.flatten() for a in np.meshgrid(*coords, sparse=False, indexing='ij')])
 
-def remove_random_grid_points(mask_coords, skip_pixel_proba):
-    n = int((1 - skip_pixel_proba) * mask_coords[0].shape[0] + 0.5)
-    idxs = np.random.choice(mask_coords[0].shape[0], n)
+def remove_random_grid_points(mask_coords, drop_grid_proba):
+    if len(mask_coords[0])==1:
+        return mask_coords
+    n = int(drop_grid_proba * mask_coords[0].shape[0] + 0.5)
+    all_idxs = np.arange(mask_coords[0].shape[0])
+    idxs_to_remove = np.random.choice(all_idxs, n, replace=False)
+    idxs_to_keep = np.setdiff1d(all_idxs, idxs_to_remove)
     res = list()
     for axis in range(len(mask_coords)):
-        res.append(mask_coords[axis][idxs])
+        res.append(mask_coords[axis][idxs_to_keep])
     return tuple(res)
+
+def remove_grid_points_probability(mask_coords, drop_grid_proba, image, drop_probability_fun):
+    if len(mask_coords[0])==1:
+        return mask_coords
+    n = int(drop_grid_proba * mask_coords[0].shape[0] + 0.5)
+    values = image[mask_coords]
+    probas = drop_probability_fun(values)
+    all_idxs = np.arange(mask_coords[0].shape[0])
+    idxs_to_remove = np.random.choice(all_idxs, n, p=probas, replace=False)
+    idxs_to_keep = np.setdiff1d(all_idxs, idxs_to_remove)
+    res = list()
+    for axis in range(len(mask_coords)):
+        res.append(mask_coords[axis][idxs_to_keep])
+    return tuple(res)
+
+def get_frequency_balanced_mask(batch, remove_proportion, probability_fun):
+    mask = np.zeros_like(batch)
+    for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+        im_flat = batch[b,...,c].reshape(-1)
+        n = int(remove_proportion * im_flat.shape[0] + 0.5)
+        all_idxs = np.arange(im_flat.shape[0])
+        idxs_to_remove = np.random.choice(all_idxs, size=n, replace=False, p=probability_fun(im_flat))
+        idx_keep = np.setdiff1d(all_idxs, idxs_to_remove)
+        mask_image = mask[b,...,c].reshape(-1)
+        mask_image[idx_keep] = im_flat.shape[0] / n
+    return mask
+
+def get_proba_fun(histogram, breaks):
+    breaks = breaks[1:]
+    def proba_fun(values):
+        bin_idx = np.digitize(values, breaks, right=False)
+        probas = histogram[bin_idx]
+        return probas / sum(probas)
+    return proba_fun
 
 def get_extended_mask_coordsX(mask_coords, radX, img_shape):
     """Extends mask coordinate along X-axis (structured noise reduction)
@@ -357,8 +394,13 @@ def average_batch(batch, radius=1, exclude_X=False):
     return convolve(batch, ker, mode ="mirror")
 
 
-import tensorflow as tf
+#def balance_signal_frequency(batch, probability_fun):
+
+
+#############################################################################################################################################
 # color denoising -> adapted from: https://github.com/NVlabs/selfsupervised-denoising/blob/master/selfsupervised_denoising.py
+# NOT TESTED YET
+import tensorflow as tf
 
 def batch_vtmv(v, m): # Batched (v^T * M * v).
     return tf.reduce_sum(v[..., :, tf.newaxis] * v[..., tf.newaxis, :] * m, axis=[-2, -1])
