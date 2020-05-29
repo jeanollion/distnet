@@ -8,7 +8,7 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["AVERAGE", "RANDOM"]
 
-def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0, average_includes_center=False, constant_replacement_value = None):
+def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0, constant_replacement_value = None):
     """masking function for self-supervised denoising.
 
     Parameters
@@ -34,14 +34,14 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
         the first C channels correspond to the input batch and the last C channels correspond to the masking grid, where the value is 0 outside the grid, and X*Y / n_pix where n_pix is the number of masked pixels
 
     """
-    if method==METHOD[0]:
+    if method==METHOD[0] or method == METHOD[0]+"_C":
         if radius not in [1, 2, 3]:
             raise ValueError("Average radius must be in [1, 2, 3]")
         def fun(batch):
             image_shape = batch.shape[1:-1]
             n_pix = float(np.prod(image_shape))
             grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
-            if average_includes_center:
+            if method == METHOD[0]+"_C":
                 if mask_X_radius>0:
                     raise ValueError("Not supported yet")
                 avg = gaussian_filter(batch, sigma = [0] + [radius]*len(image_shape) + [0], mode = "mirror")
@@ -89,7 +89,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 image[mask_coords] = image[replacement_coords] # masking
             return np.concatenate([output, mask], axis=-1)
         return fun
-    elif method=="CONSTANT":
+    elif method=="CONSTANT" or method=="MAXIMUM":
         def fun(batch):
             image_shape = batch.shape[1:-1]
             n_pix = float(np.prod(image_shape))
@@ -99,7 +99,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 r_patch_radius = tuple(r_patch_radius)
             output = np.copy(batch) # batch will be modified
             mask = np.zeros_like(output)
-            if constant_replacement_value is None:
+            if constant_replacement_value is None or method=="MAXIMUM":
                 constant_replacement_value_ = np.max(batch)
             else:
                 constant_replacement_value_ = constant_replacement_value
