@@ -8,7 +8,7 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["AVERAGE", "RANDOM"]
 
-def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0):
+def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0, constant_replacement_value = 1):
     """masking function for self-supervised denoising.
 
     Parameters
@@ -84,7 +84,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 image[mask_coords] = image[replacement_coords] # masking
             return np.concatenate([output, mask], axis=-1)
         return fun
-    elif method=="ZERO":
+    elif method=="CONSTANT":
         def fun(batch):
             image_shape = batch.shape[1:-1]
             n_pix = float(np.prod(image_shape))
@@ -94,6 +94,10 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 r_patch_radius = tuple(r_patch_radius)
             output = np.copy(batch) # batch will be modified
             mask = np.zeros_like(output)
+            if constant_replacement_value is None:
+                constant_replacement_value_ = np.max(batch)
+            else:
+                constant_replacement_value_ = constant_replacement_value
             for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
                 image = batch[b,...,c]
                 mask_image = mask[b,...,c]
@@ -105,7 +109,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 mask_image[mask_coords] =  n_pix / len(mask_coords[0])
                 if mask_X_radius>0:
                     mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
-                image[mask_coords] = 0 # masking
+                image[mask_coords] = constant_replacement_value_ # masking
             return np.concatenate([output, mask], axis=-1)
         return fun
     elif method=="TEST":
