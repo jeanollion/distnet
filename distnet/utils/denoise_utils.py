@@ -8,7 +8,7 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["AVERAGE", "RANDOM"]
 
-def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0, signal_frequency_fun=None):
+def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0):
     """masking function for self-supervised denoising.
 
     Parameters
@@ -44,18 +44,15 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             avg = average_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
             output = np.copy(batch) # batch will be modified
             mask = np.zeros_like(output)
-            for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+            for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])): # TODO same grid for whole batch ? 
                 image = batch[b,...,c]
                 avg_image = avg[b,...,c]
                 mask_image = mask[b,...,c]
                 grid_shape_r = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
                 offset = get_random_offset(grid_shape_r)
-                mask_coords = get_mask_coords(grid_shape_r , offset, image_shape)
+                mask_coords = get_mask_coords(grid_shape_r, offset, image_shape)
                 if drop_grid_proportion>0:
-                    if signal_frequency_fun is None:
-                        mask_coords = remove_random_grid_points(mask_coords, drop_grid_proportion)
-                    else:
-                        mask_coords = remove_grid_points_probability(mask_coords, drop_grid_proportion, image, signal_frequency_fun)
+                    mask_coords = remove_random_grid_points(mask_coords, drop_grid_proportion)
                 mask_image[mask_coords] =  n_pix / len(mask_coords[0])
                 if mask_X_radius>0:
                     mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape_[-1]//2, mask_X_radius), image_shape)
@@ -78,10 +75,8 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 grid_shape_r = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
                 offset = get_random_offset(grid_shape_r)
                 mask_coords = get_mask_coords(grid_shape_r , offset, image_shape)
-                if signal_frequency_fun is None:
+                if drop_grid_proportion>0:
                     mask_coords = remove_random_grid_points(mask_coords, drop_grid_proportion)
-                else:
-                    mask_coords = remove_grid_points_probability(mask_coords, drop_grid_proportion, image, signal_frequency_fun)
                 mask_image[mask_coords] =  n_pix / len(mask_coords[0])
                 if mask_X_radius>0:
                     mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
@@ -107,10 +102,8 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 mask_coords = get_mask_coords(grid_shape_ , offset, image_shape)
                 if mask_X_radius>0:
                     mask_coords = get_extended_mask_coordsX(mask_coords, min(grid_shape[-1]//2, mask_X_radius), image_shape)
-                if signal_frequency_fun is None:
+                if drop_grid_proportion>0:
                     mask_coords = remove_random_grid_points(mask_coords, drop_grid_proportion)
-                else:
-                    mask_coords = remove_grid_points_probability(mask_coords, drop_grid_proportion, image, signal_frequency_fun)
                 mask_values = np.arange(mask_coords[0].shape[0])
                 np.random.shuffle(mask_values)
                 replacement_coords = get_random_coords(r_patch_radius, mask_coords, image_shape, exclude_X=mask_X_radius>0)
@@ -200,20 +193,6 @@ def remove_random_grid_points(mask_coords, drop_grid_proportion):
         res.append(mask_coords[axis][idxs_to_keep])
     return tuple(res)
 
-def remove_grid_points_probability(mask_coords, drop_grid_proportion, image, signal_frequency_fun):
-    if len(mask_coords[0])==1:
-        return mask_coords
-    n = int(drop_grid_proportion * mask_coords[0].shape[0] + 0.5)
-    values = image[mask_coords]
-    probas = signal_frequency_fun(values)
-    all_idxs = np.arange(mask_coords[0].shape[0])
-    idxs_to_remove = np.random.choice(all_idxs, n, p=probas, replace=False)
-    idxs_to_keep = np.setdiff1d(all_idxs, idxs_to_remove)
-    res = list()
-    for axis in range(len(mask_coords)):
-        res.append(mask_coords[axis][idxs_to_keep])
-    return tuple(res)
-
 def get_signal_frequency_balanced_mask(batch, remove_proportion, probability_fun):
     mask = np.zeros_like(batch)
     for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
@@ -226,7 +205,7 @@ def get_signal_frequency_balanced_mask(batch, remove_proportion, probability_fun
         mask_image[idx_keep] = im_flat.shape[0] / n
     return mask
 
-def get_proba_fun(histogram, breaks):
+def get_proba_fun(histogram, breaks): # COULD BE OPTIMIZED -> COMPUTE BIN USING MIN/MAX/NBIN instead of digitize
     breaks = breaks[1:]
     def proba_fun(values):
         bin_idx = np.digitize(values, breaks, right=False)
