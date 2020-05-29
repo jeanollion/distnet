@@ -8,7 +8,7 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["AVERAGE", "RANDOM"]
 
-def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0, constant_replacement_value = 1):
+def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0, constant_replacement_value = None):
     """masking function for self-supervised denoising.
 
     Parameters
