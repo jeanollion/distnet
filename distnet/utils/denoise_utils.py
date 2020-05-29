@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.ndimage import convolve
+from scipy.ndimage import convolve, gaussian_filter
 from scipy.stats import multivariate_normal
 from numpy.random import randint
 import itertools
@@ -8,7 +8,7 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["AVERAGE", "RANDOM"]
 
-def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0, constant_replacement_value = None):
+def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0, average_includes_center=False, constant_replacement_value = None):
     """masking function for self-supervised denoising.
 
     Parameters
@@ -41,7 +41,12 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             image_shape = batch.shape[1:-1]
             n_pix = float(np.prod(image_shape))
             grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
-            avg = average_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
+            if average_includes_center:
+                if mask_X_radius>0:
+                    raise ValueError("Not supported yet")
+                avg = gaussian_filter(batch, sigma = [0] + [radius]*len(image_shape) + [0], mode = "mirror")
+            else:
+                avg = average_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
             output = np.copy(batch) # batch will be modified
             mask = np.zeros_like(output)
             for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])): # TODO same grid for whole batch ?
@@ -347,7 +352,7 @@ def get_nd_gaussian_donut_kernel(radius=1, sigma=0, ndim=2, exclude_X=False):
     ker = get_nd_gaussian_kernel(radius, sigma, ndim)
     if exclude_X:
         if ndim==1:
-            raise ValueError("exclude_X incopatible with 1D arrays")
+            raise ValueError("exclude_X incompatible with 1D arrays")
         elif ndim==2:
             for x in range(-radius, radius+1):
                 ker[radius, x] = 0
