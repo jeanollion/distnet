@@ -52,7 +52,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])): # TODO same grid for whole batch ?
                 m_coords = (b,) + mask_coords + (c,)
                 batch[m_coords] = avg[m_coords] # masking
-            return np.concatenate([output, mask], axis=-1)
+            return output
         return fun
     elif method==METHOD[1]:
         def fun(batch):
@@ -75,7 +75,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 m_coords = (b,) + mask_coords + (c,)
                 r_coords = (b,) + replacement_coords + (c,)
                 batch[m_coords] = batch[r_coords] # masking
-            return np.concatenate([output, mask], axis=-1)
+            return output
         return fun
     elif method=="CONSTANT" or method=="MAXIMUM":
         def fun(batch):
@@ -102,7 +102,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
                 m_coords = (b,) + mask_coords + (c,)
                 batch[m_coords] = constant_replacement_value_ # masking
-            return np.concatenate([output, mask], axis=-1)
+            return output
         return fun
     elif method=="TEST":
         def fun(batch):
