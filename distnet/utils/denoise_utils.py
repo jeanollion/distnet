@@ -89,6 +89,8 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             mask = np.zeros_like(output)
             if constant_replacement_value is None or method=="MAXIMUM":
                 constant_replacement_value_ = np.max(batch)
+            elif callable(constant_replacement_value):
+                constant_replacement_value_ = constant_replacement_value(batch)
             else:
                 constant_replacement_value_ = constant_replacement_value
             grid_shape_r = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
