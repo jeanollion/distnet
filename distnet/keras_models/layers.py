@@ -1,11 +1,14 @@
 from tensorflow import pad
-from tensorflow.keras.layers import Layer, GlobalAveragePooling2D, Reshape, Conv2D, Multiply
+from tensorflow.keras.layers import Layer, GlobalAveragePooling2D, Reshape, Conv2D, Multiply, Conv3D
 from distnet.utils.denoise_utils import get_nd_gaussian_kernel
+from ..utils.helpers import ensure_multiplicity
+from tensorflow.python.keras.engine.input_spec import InputSpec
+import tensorflow as tf
 
 class ReflectionPadding2D(Layer):
-  def __init__(self, padding=(1, 1), **kwargs):
-    if not isinstance(padding, (list, tuple)):
-      padding=(padding, padding)
+  def __init__(self, paddingYX=(1, 1), **kwargs):
+    if not isinstance(paddingYX, (list, tuple)):
+      padding=(paddingYX, paddingYX)
     self.padding = tuple(padding)
     super().__init__(**kwargs)
 
@@ -13,7 +16,7 @@ class ReflectionPadding2D(Layer):
     return (input_shape[0], input_shape[1] + 2 * self.padding[0], input_shape[2] + 2 * self.padding[1], input_shape[3])
 
   def call(self, input_tensor, mask=None):
-    padding_width, padding_height = self.padding
+    padding_height, padding_width = self.padding
     return pad(input_tensor, [[0,0], [padding_height, padding_height], [padding_width, padding_width], [0,0] ], 'REFLECT')
 
   def get_config(self):
@@ -55,3 +58,30 @@ def channel_attention(n_filters, activation='relu'): # TODO TEST + make layer or
     key = Conv2D(kernel_size=1, filters = n_filters, activation='sigmoid')(conv1)
     return Multiply()([key, input])
   return ca_fun
+
+class Conv3D_YXC(Layer):
+  def __init__(self, filters, kernelYX, n_channels, padding="REFLECT", **kwargs):
+    kernelYXC=ensure_multiplicity(2, kernelYX)
+    if padding=="same":
+        padding = "CONSTANT"
+    name = kwargs.pop('name', None)
+    self.padding_constant_value = kwargs.pop('constant_values', 0)
+    self.convL = Conv3D(filters=filters, kernel_size = (kernelYX[0], kernelYX[1], n_channels), padding="valid",  name = name+"conv" if name is not None else None, **kwargs)
+    self.input_spec = InputSpec(ndim=4)
+    self.padding = padding
+    super().__init__(name)
+
+  def compute_output_shape(self, input_shape):
+    if self.padding=="valid":
+        return (input_shape[0], input_shape[1] - self.convL.kernel_size[0] + 1 , input_shape[2] - self.convL.kernel_size[1] + 1, self.filters)
+    else:
+        return (input_shape[0], input_shape[1], input_shape[2], self.filters)
+
+  def call(self, input_tensor, mask=None):
+    if self.padding!="valid":
+        padding_height, padding_width = [ (k-1)//2 for k in self.convL.kernel_size[:-1]]
+        input_tensor = pad(input_tensor, [[0,0], [padding_height, padding_height], [padding_width, padding_width], [0,0] ], mode = self.padding, constant_values=self.padding_constant_value, name = self.name+"pad" if self.name is not None else None)
+    conv = self.convL(input_tensor[...,tf.newaxis]) # add "channel" axis for 5D tensor
+    return conv[:, :, :, 0, :] # valid padding on last conv axis -> size 1
+
+# TODO get_config -> attributes of convL ?
