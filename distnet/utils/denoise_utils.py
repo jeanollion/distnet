@@ -33,7 +33,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
         function that inputs the batch (format NYXC), mask some of the batch pixels along a grid, and returns an output batch with shape N,Y,X,2*C
         the first C channels correspond to the input batch and the last C channels correspond to the masking grid, where the value is 0 outside the grid, and X*Y / n_pix where n_pix is the number of masked pixels
     """
-    if method==METHOD[0] or method=="MEDIAN":
+    if method==METHOD[0] or method=="MEDIAN" or method=="WMEDIAN":
         def fun(batch):
             image_shape = batch.shape[1:-1]
             n_pix = float(np.prod(image_shape))
@@ -52,7 +52,10 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 r_values = lambda b,c : avg[b,...,c][mask_coords]
             else: # median. only computed on grid
                 grid_exp = expand_coordinates(mask_coords, radius, image_shape)
-                r_values = lambda b,c : weighted_median_coord(batch[b,...,c], grid_exp, radius =radius, exclude_X=mask_X_radius>0)
+                if method == "MEDIAN":
+                    r_values = lambda b,c : median_coord(batch[b,...,c], grid_exp, exclude_X=mask_X_radius>0)
+                else:
+                    r_values = lambda b,c : weighted_median_coord(batch[b,...,c], grid_exp, exclude_X=mask_X_radius>0)
             for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
                 batch[b,...,c][mask_coords] = r_values(b,c) # masking
             return output
@@ -316,6 +319,22 @@ def get_random_coords(patch_radius, offsets, img_shape, exclude_X = False):
         #coords[axis][mask] = 0
     return tuple(coords)
 
+def predict_mask(model, batch, batch_mask, grid_shape):
+    rank = batch.ndim - 2
+    grid_shape = ensure_multiplicity(rank, grid_shape)
+    n_coords = np.product(grid_shape)
+    batch_masked = batch.copy()
+    output = np.zeros_like(batch)
+    for offset in range(n_coords):
+        coords = get_mask_coords(grid_shape, offset)
+        for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+            mask_idx = (b,) + mask_coords + (c,)
+            batch_masked[mask_idx] = batch_mask[mask_idx]
+            pred = model.predict(batch_masked)
+            output[mask_idx] = pred[mask_idx]
+            batch_masked[mask_idx] = batch[mask_idx]
+    return output
+
 #########################################################################################
 ###################### DONUT AVERAGE ####################################################
 
@@ -418,10 +437,71 @@ def average_coord(image, extended_coords, radius =1, exclude_X=False):
     return np.apply_along_axis(lambda data : np.dot(data,  weights), 1, subarrays)
 
 ####################################################################################################
-################################  DONUT WEIGHTED MEDIAN FILTER ##############################################
+################################  DONUT (WEIGHTED) MEDIAN FILTER ##############################################
 
 MEDIAN_KER_2D = {1:np.array([[1,1,1],[1,0,1],[1,1,1]])[np.newaxis,...,np.newaxis], 2:np.array([[0,0,1,0,0],[0,1,1,1,0],[0,1,0,1,0],[0,1,1,1,0],[0,0,1,0,0]])[np.newaxis,...,np.newaxis]}
 MEDIAN_KER_2D_X = {1:np.array([[1,1,1],[0,0,0],[1,1,1]])[np.newaxis,...,np.newaxis], 2:np.array([[0,0,1,0,0],[0,1,1,1,0],[0,0,0,0,0],[0,1,1,1,0],[0,0,1,0,0]])[np.newaxis,...,np.newaxis]}
+
+def median_fun(footprint):
+    l = np.sum(footprint)
+    idx = l//2
+    footprint = footprint.flatten()!=0
+    if l%2==1:
+        def fun(data):
+            sorted_data = np.sort(data[footprint])
+            return sorted_data[idx]
+        return fun
+    else:
+        def fun(data):
+            sorted_data = np.sort(data[footprint])
+            return (sorted_data[idx] + sorted_data[idx-1]) * 0.5
+        return fun
+
+def median_coord(image, extended_coords, exclude_X=False):
+    subarrays = image[extended_coords]
+    subarrays = subarrays.reshape(subarrays.shape[0], -1)
+    size = subarrays.shape[1]
+    radius = (int(np.sqrt(size))-1)//2
+    assert size == (radius*2+1)**2, "invalid extended coordinates -> extension should be squared and sides uneven"
+    assert radius in [1,2], "only radius 1, 2 supported"
+    rank = image.ndim
+    if rank==2:
+        fp = MEDIAN_KER_2D[radius] if not exclude_X else MEDIAN_KER_2D_X[radius]
+    else:
+        raise ValueError("Only 2D arrays supported")
+
+    return np.apply_along_axis(median_fun(fp), 1, subarrays)
+
+def median_batch(batch, radius=1, exclude_X=False):
+    assert radius in [1,2], "only radius 1, 2 supported"
+    rank = batch.ndim - 2 # exclude batch & channel
+    if rank==2:
+        fp = MEDIAN_KER_2D[radius] if not exclude_X else MEDIAN_KER_2D_X[radius]
+    else:
+        raise ValueError("Only 2D arrays supported")
+    return median_filter(batch, footprint = fp, mode='mirror')
+
+def weighted_median_coord(image, extended_coords, exclude_X=False):
+    subarrays = image[extended_coords]
+    subarrays = subarrays.reshape(subarrays.shape[0], -1)
+    size = subarrays.shape[1]
+    radius = (int(np.sqrt(size))-1)//2
+    assert size == (radius*2+1)**2, "invalid extended coordinates -> extension should be squared and sides uneven"
+    assert radius in [1,2,3], "only radius 1, 2, 3 supported"
+    rank = image.ndim
+    if rank==2:
+        ker = AVG_KERNELS_2D[radius] if not exclude_X else AVG_KERNELS_2D_X[radius]
+    elif rank==3:
+        ker = AVG_KERNELS_3D[radius] if not exclude_X else AVG_KERNELS_3D_X[radius]
+    elif rank==1:
+        if exclude_X:
+            raise ValueError("exclude_X incopatible with 1D arrays")
+        ker = AVG_KERNELS_1D[radius]
+    else:
+        raise ValueError("Only 1D, 2D or 3D arrays supported")
+
+    weights = ker.flatten()
+    return np.apply_along_axis(weighted_median_fun(weights), 1, subarrays)
 
 def weighted_median_fun(weights):
     weights = weights.flatten()
