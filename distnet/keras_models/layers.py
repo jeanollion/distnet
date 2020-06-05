@@ -4,6 +4,7 @@ from distnet.utils.denoise_utils import get_nd_gaussian_kernel
 from ..utils.helpers import ensure_multiplicity
 from tensorflow.python.keras.engine.input_spec import InputSpec
 import tensorflow as tf
+import numpy as np
 
 class ReflectionPadding2D(Layer):
   def __init__(self, paddingYX=(1, 1), **kwargs):
@@ -85,7 +86,17 @@ class SplitContextCenterConv2D(Layer):
     def build(self, input_shape):
         super().build(input_shape)
         input_shape = tensor_shape.TensorShape(input_shape)
-        self.n_channels = int(input_shape[-1])
+        self.n_channels = int(input_shape[-1])//2
+        conv_input_shape = input_shape[:-1] + (2, self.n_channels)
+        self.convL.build(conv_input_shape)
+
+        kernel_mask = np.ones(shape=(self.convL.kernel_size)+( self.n_channels, self.convL.filters )) # broadcasting
+        kernel_mask[self.ker_center[0],self.ker_center[1],0]=0
+        kernel_mask[:,:self.ker_center[1],1]=0
+        kernel_mask[:,(self.ker_center[1]+1):,1]=0
+        kernel_mask[:self.ker_center[0],self.ker_center[1],1]=0
+        kernel_mask[(self.ker_center[0]+1):,self.ker_center[1],1]=0
+        self.kernel_mask = tf.convert_to_tensor(kernel_mask, dtype=tf.bool)
 
     def call(self, input_tensor, mask=None):
         if self.padding!="valid": # we set explicitely the padding because convolution is performed with valid padding
@@ -98,12 +109,7 @@ class SplitContextCenterConv2D(Layer):
         else:
             context, center = tf.split(input_tensor, 2, axis=-1)
             conv_in = tf.concat([context[...,tf.newaxis, :], center[...,tf.newaxis, :]], axis=-2)
-        # set explicitely the unused weights to zero kernel shape: YXZ'CiCo (Z' -> Context+Center)
-        self.convL.kernel[self.ker_center[0],self.ker_center[1],0]=0
-        self.convL.kernel[:,:self.ker_center[1],1]=0
-        self.convL.kernel[:,(self.ker_center[1]+1):,1]=0
-        self.convL.kernel[:self.ker_center[0],self.ker_center[1],1]=0
-        self.convL.kernel[(self.ker_center[0]+1):,self.ker_center[1],1]=0
+        self.convL.kernel = tf.where(self.kernel_mask, self.convL.kernel, tf.zeros_like(self.convL.kernel)) # set explicitely the unused weights to zero
         conv = self.convL(conv_in) # BYX1F (valid padding on last conv axis -> size 1)
         return conv[:, :, :, 0, :]
 
