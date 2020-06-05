@@ -109,8 +109,7 @@ class SplitContextCenterConv2D(Layer):
         else:
             context, center = tf.split(input_tensor, 2, axis=-1)
             conv_in = tf.concat([context[...,tf.newaxis, :], center[...,tf.newaxis, :]], axis=-2)
-        self.convL.kernel = tf.where(self.kernel_mask, self.convL.kernel, tf.zeros_like(self.convL.kernel)) # set explicitely the unused weights to zero
-        self.convL._trainable_weights.append(self.convL.kernel)
+        self.convL.kernel.assign(tf.where(self.kernel_mask, self.convL.kernel, tf.zeros_like(self.convL.kernel))) # set explicitely the unused weights to zero
         conv = self.convL(conv_in) # BYX1F (valid padding on last conv axis -> size 1)
         return conv[:, :, :, 0, :]
 
