@@ -59,29 +59,52 @@ def channel_attention(n_filters, activation='relu'): # TODO TEST + make layer or
     return Multiply()([key, input])
   return ca_fun
 
-class Conv3D_YXC(Layer):
-  def __init__(self, filters, kernelYX, n_channels, padding="REFLECT", **kwargs):
-    kernelYXC=ensure_multiplicity(2, kernelYX)
-    if padding=="same":
-        padding = "CONSTANT"
-    name = kwargs.pop('name', None)
-    self.padding_constant_value = kwargs.pop('constant_values', 0)
-    self.convL = Conv3D(filters=filters, kernel_size = (kernelYX[0], kernelYX[1], n_channels), padding="valid",  name = name+"conv" if name is not None else None, **kwargs)
-    self.input_spec = InputSpec(ndim=4)
-    self.padding = padding
-    super().__init__(name)
+############## TEST #####################
+from tensorflow.python.framework import tensor_shape
+class SplitContextCenterConv2D(Layer):
+    def __init__(self, filters, kernelYX, padding="same", **kwargs): #REFLECT
+        for k in kernelYX:
+            assert k%2==1, "kernel size must be uneven on all spatial axis"
+        kernelYX=ensure_multiplicity(2, kernelYX)
+        if padding=="same":
+            padding = "CONSTANT"
+        name = kwargs.pop('name', None)
+        self.padding_constant_value = kwargs.pop('constant_values', 0)
+        self.convL = Conv3D(filters=filters, kernel_size = (kernelYX[0], kernelYX[1], 2), padding="valid",  name = name+"conv" if name is not None else None, **kwargs)
+        self.input_spec = InputSpec(ndim=4)
+        self.padding = padding
+        self.ker_center = [(k-1)//2 for k in kernelYX]
+        super().__init__(name)
 
-  def compute_output_shape(self, input_shape):
-    if self.padding=="valid":
-        return (input_shape[0], input_shape[1] - self.convL.kernel_size[0] + 1 , input_shape[2] - self.convL.kernel_size[1] + 1, self.filters)
-    else:
-        return (input_shape[0], input_shape[1], input_shape[2], self.filters)
+    def compute_output_shape(self, input_shape):
+        if self.padding=="valid":
+            return (input_shape[0], input_shape[1] - self.convL.kernel_size[0] + 1 , input_shape[2] - self.convL.kernel_size[1] + 1, self.filters)
+        else:
+            return (input_shape[0], input_shape[1], input_shape[2], self.filters)
 
-  def call(self, input_tensor, mask=None):
-    if self.padding!="valid":
-        padding_height, padding_width = [ (k-1)//2 for k in self.convL.kernel_size[:-1]]
-        input_tensor = pad(input_tensor, [[0,0], [padding_height, padding_height], [padding_width, padding_width], [0,0] ], mode = self.padding, constant_values=self.padding_constant_value, name = self.name+"pad" if self.name is not None else None)
-    conv = self.convL(input_tensor[...,tf.newaxis]) # add "channel" axis for 5D tensor
-    return conv[:, :, :, 0, :] # valid padding on last conv axis -> size 1
+    def build(self, input_shape):
+        super().build(input_shape)
+        input_shape = tensor_shape.TensorShape(input_shape)
+        self.n_channels = int(input_shape[-1])
+
+    def call(self, input_tensor, mask=None):
+        if self.padding!="valid": # we set explicitely the padding because convolution is performed with valid padding
+            padding_height, padding_width = self.ker_center
+            input_tensor = pad(input_tensor, [[0,0], [padding_height, padding_height], [padding_width, padding_width], [0,0] ], mode = self.padding, constant_values=self.padding_constant_value, name = self.name+"pad" if self.name is not None else None)
+        # convert to 5D tensor -> split in channel dimension to create a new spatial dimension. assumes channel last
+        # in : BYX[2xC], out: BYX2C
+        if self.n_channels==1:
+            conv_in = input_tensor[...,tf.newaxis]
+        else:
+            context, center = tf.split(input_tensor, 2, axis=-1)
+            conv_in = tf.concat([context[...,tf.newaxis, :], center[...,tf.newaxis, :]], axis=-2)
+        # set explicitely the unused weights to zero kernel shape: YXZ'CiCo (Z' -> Context+Center)
+        self.convL.kernel[self.ker_center[0],self.ker_center[1],0]=0
+        self.convL.kernel[:,:self.ker_center[1],1]=0
+        self.convL.kernel[:,(self.ker_center[1]+1):,1]=0
+        self.convL.kernel[:self.ker_center[0],self.ker_center[1],1]=0
+        self.convL.kernel[(self.ker_center[0]+1):,self.ker_center[1],1]=0
+        conv = self.convL(conv_in) # BYX1F (valid padding on last conv axis -> size 1)
+        return conv[:, :, :, 0, :]
 
 # TODO get_config -> attributes of convL ?
