@@ -8,7 +8,7 @@ from .helpers import ensure_multiplicity
 
 METHOD = ["AVERAGE", "RANDOM"]
 
-def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=0, radius = 1, mask_X_radius=0, drop_grid_proportion = 0, constant_replacement_value = None):
+def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_increase_shape=2, radius = 1, mask_X_radius=0, drop_grid_proportion = 0.1, constant_replacement_value = None, **kwargs):
     """masking function for self-supervised denoising.
 
     Parameters
@@ -82,6 +82,37 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 r_coords = (b,) + replacement_coords + (c,)
                 batch[m_coords] = batch[r_coords] # masking
             return output
+        return fun
+    elif method=="NORMAL": # THIS RETURNS A channels_postprocessing_function -> input is a dict with all channels. additional arguments : input_channel_idx / output_channel_idx / mean_channel_idx (facultative) / sigma_channel_idx
+        def fun(batch_per_channel):
+            assert isinstance(batch_per_channel, dict), "input must be a dict mapping channel indices to corresponding batches. in NORMAL method the returned function should be used as a channels_postprocessing_function"
+            i_idx = kwargs["input_channel_idx"]
+            batch = batch_per_channel[i_idx]
+            o_idx = kwargs["output_channel_idx"]
+            if "mean_channel_idx" in kwargs and kwargs["mean_channel_idx"]>=0:
+                mu_idx = kwargs["mean_channel_idx"]
+                mean_batch = batch_per_channel[mu_idx]
+            else:
+                mean_batch = batch # noise is added to noisy image
+            sig_idx = kwargs["sigma_channel_idx"]
+            sig_batch = batch_per_channel[sig_idx]
+
+            image_shape = batch.shape[1:-1]
+            n_pix = float(np.prod(image_shape))
+            grid_shape_ = ensure_multiplicity(len(image_shape), grid_shape)
+
+            grid_shape_r = random_increase_grid_shape(grid_random_increase_shape, grid_shape_)
+            offset = get_random_offset(grid_shape_r)
+            mask_coords = get_mask_coords(grid_shape_r, offset, image_shape)
+            if drop_grid_proportion>0:
+                mask_coords = remove_random_grid_points(mask_coords, drop_grid_proportion)
+            batch_per_channel[o_idx] = get_output(batch, mask_coords)
+            if mask_X_radius>0:
+                mask_coords = get_extended_mask_coordsX(mask_coords, mask_X_radius, image_shape)
+
+            r_values = lambda b,c : np.random.normal(loc=mean_batch[b,...,c][mask_coords], scale=sig_batch[b,...,c][mask_coords])
+            for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+                batch[b,...,c][mask_coords] = r_values(b,c) # masking
         return fun
     elif method=="CONSTANT" or method=="MAXIMUM":
         def fun(batch):
