@@ -94,6 +94,10 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 mean_batch = batch_per_channel[mu_idx]
             else:
                 mean_batch = batch # noise is added to noisy image
+            if "mean_channel_function" in kwargs:
+                mean_batch_fun = kwargs["mean_channel_function"]
+            else: # simply the value of mean_batch @ coords
+                mean_batch_fun = lambda img, coords : img[coords]
             sig_idx = kwargs["sigma_channel_idx"]
             sig_batch = batch_per_channel[sig_idx]
 
@@ -107,10 +111,12 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             if drop_grid_proportion>0:
                 mask_coords = remove_random_grid_points(mask_coords, drop_grid_proportion)
             batch_per_channel[o_idx] = get_output(batch, mask_coords)
+            if "concat_sigma_noise" in kwargs and kwargs["concat_sigma_noise"]:
+                batch_per_channel[o_idx] = np.concatenate([sig_batch, batch_per_channel[o_idx]], axis=-1)
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, mask_X_radius, image_shape)
 
-            r_values = lambda b,c : np.random.normal(loc=mean_batch[b,...,c][mask_coords], scale=sig_batch[b,...,c][mask_coords])
+            r_values = lambda b,c : np.random.normal(loc=mean_batch_fun(mean_batch[b,...,c], mask_coords), scale=sig_batch[b,...,c][mask_coords])
             for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
                 batch[b,...,c][mask_coords] = r_values(b,c) # masking
         return fun
