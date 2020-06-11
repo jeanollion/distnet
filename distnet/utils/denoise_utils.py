@@ -44,18 +44,20 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             mask_coords = get_mask_coords(grid_shape_r, offset, image_shape)
             if drop_grid_proportion>0:
                 mask_coords = remove_random_grid_points(mask_coords, drop_grid_proportion)
-            output = get_output(batch, mask_coords, random_channel=grid_random_channel)
-            if mask_X_radius>0:
-                mask_coords = get_extended_mask_coordsX(mask_coords, mask_X_radius, image_shape)
             if method==METHOD[0]:
                 avg = average_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
+            elif method == "MEDIAN":
+                avg = median_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
+            else:
+                avg = None
+            output = get_output(batch, mask_coords, random_channel=grid_random_channel, min_probability = kwargs.get("min_probability", 0), frequency_function=kwargs.get("balance_frequency_function", 0.5), balance_frequency_image=avg)
+            if mask_X_radius>0:
+                mask_coords = get_extended_mask_coordsX(mask_coords, mask_X_radius, image_shape)
+            if method==METHOD[0] or method == "MEDIAN":
                 r_values = lambda b,c : avg[b,...,c][mask_coords]
-            else: # median. only computed on grid
+            else: # weighted median -> only compute for each grid value
                 grid_exp = expand_coordinates(mask_coords, radius, image_shape)
-                if method == "MEDIAN":
-                    r_values = lambda b,c : median_coord(batch[b,...,c], grid_exp, exclude_X=mask_X_radius>0)
-                else:
-                    r_values = lambda b,c : weighted_median_coord(batch[b,...,c], grid_exp, exclude_X=mask_X_radius>0)
+                r_values = lambda b,c : weighted_median_coord(batch[b,...,c], grid_exp, exclude_X=mask_X_radius>0)
             for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
                 batch[b,...,c][mask_coords] = r_values(b,c) # masking
             return output
@@ -100,7 +102,11 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
             mask_coords = get_mask_coords(grid_shape_r, offset, image_shape)
             if drop_grid_proportion>0:
                 mask_coords = remove_random_grid_points(mask_coords, drop_grid_proportion)
-            batch_per_channel[o_idx] = get_output(batch, mask_coords, random_channel=grid_random_channel)
+            if "balance_frequency_image_function" in kwargs and kwargs["balance_frequency_image_function"] is not None:
+                balance_frequency_image = kwargs["balance_frequency_image_function"](batch_per_channel)
+            else:
+                balance_frequency_image=None
+            batch_per_channel[o_idx] = get_output(batch, mask_coords, random_channel=grid_random_channel, min_probability = kwargs.get("min_probability", 0), frequency_function=kwargs.get("balance_frequency_function", 0.5), balance_frequency_image=balance_frequency_image)
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, mask_X_radius, image_shape)
             r_values = replacement_function(batch_per_channel, mask_coords)
@@ -174,7 +180,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
     else:
         raise ValueError("Invalid method")
 
-def get_output(batch, mask_coords, random_channel=True):
+def get_output(batch, mask_coords, random_channel=True, min_probability=0, frequency_function=None, balance_frequency_image=None):
     """Return the output of the blind denoising function
 
     Parameters
@@ -191,18 +197,28 @@ def get_output(batch, mask_coords, random_channel=True):
 
     """
     mask = np.zeros(batch.shape, dtype=batch.dtype)
-    n_pix = float(np.prod(batch.shape[1:-1])) # same number on each chan, no need to include them
-    mask_value = n_pix / len(mask_coords[0])
+    n_pix = float(np.prod(batch.shape[1:-1]))
+    if frequency_function is not None:
+        assert balance_frequency_image is not None and balance_frequency_image.shape == batch.shape
+        def value_fun(coords):
+            values = min_probability + 1 - frequency_function(balance_frequency_image[coords])
+            return values * ( n_pix / np.sum(values) )
     if random_channel and batch.shape[-1]>1:
-        mask_value = mask_value * batch.shape[-1] # only grid pixel per channel
+        if frequency_function is None:
+            mask_value = batch.shape[-1] * n_pix / len(mask_coords[0])
+            value_fun = lambda coords : mask_value
         c = np.random.randint(batch.shape[-1], size = mask_coords[0].shape[0])
         mask_coords = mask_coords + (c,)
         for b in range(batch.shape[0]):
-            mask[b][mask_coords] = mask_value
+            mask_idx = (b,) + mask_coords
+            mask[mask_idx] = value_fun(mask_idx)
     else:
+        if frequency_function is None:
+            mask_value = n_pix / len(mask_coords[0])
+            value_fun = lambda coords : mask_value
         for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
             mask_idx = (b,) + mask_coords + (c,)
-            mask[mask_idx] = mask_value
+            mask[mask_idx] = value_fun(mask_idx)
     return np.concatenate([batch, mask], axis=-1)
 
 def random_increase_grid_shape(random_increase_shape, grid_shape):
@@ -353,7 +369,7 @@ def get_random_coords(patch_radius, offsets, img_shape, exclude_X = False):
     coords = list(np.unravel_index(indices, patch_shape))
     for axis in range(len(offsets)):
         coords[axis] += offsets[axis] - patch_radius[axis]
-        # mirror coords outside image (center on coord to avoid targeting center)
+        # mirror coords outside image (center on coords to avoid targeting center)
         mask = (coords[axis]<0) | (coords[axis]>=img_shape[axis])
         coords[axis][mask] = 2 * offsets[axis][mask] - coords[axis][mask]
         #coords[axis][mask] = 0
@@ -653,24 +669,28 @@ def color_gauss_loss(y_true, y_pred, sigma_x, sigma2_n, regularization=False, dt
 
 #########################################################################################################
 ##############"" MISC ########### FOR TESTING PURPOSES
-def get_signal_frequency_balanced_mask(batch, remove_proportion, probability_fun):
+def get_signal_frequency_balanced_mask(batch, frequency_function, probability_min=0):
     mask = np.zeros_like(batch)
+    n_pix = float(np.prod(batch.shape[1:-1]))
     for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
-        im_flat = batch[b,...,c].reshape(-1)
-        n = int(remove_proportion * im_flat.shape[0] + 0.5)
-        all_idxs = np.arange(im_flat.shape[0])
-        idxs_to_remove = np.random.choice(all_idxs, size=n, replace=False, p=probability_fun(im_flat))
-        idx_keep = np.setdiff1d(all_idxs, idxs_to_remove)
-        mask_image = mask[b,...,c].reshape(-1)
-        mask_image[idx_keep] = im_flat.shape[0] / n
+        mask_p = probability_min + 1 - frequency_function(batch[b,...,c])
+        mask[b,...,c] = n_pix * mask_p / np.sum(mask_p)
     return mask
 
-def get_proba_fun(histogram, breaks): # COULD BE OPTIMIZED -> COMPUTE BIN USING MIN/MAX/NBIN instead of digitize
-    breaks = breaks[1:]
+# def get_proba_fun(histogram, breaks): # COULD BE OPTIMIZED -> COMPUTE BIN USING MIN/MAX/NBIN instead of digitize
+#     breaks = breaks[1:]
+#     def proba_fun(values):
+#         bin_idx = np.digitize(values, breaks, right=False)
+#         probas = histogram[bin_idx]
+#         return probas / sum(probas)
+#     return proba_fun
+
+def get_frequency_function(histogram, vmin, binsize):
+    histogram = histogram / np.sum(histogram)
     def proba_fun(values):
-        bin_idx = np.digitize(values, breaks, right=False)
+        bin_idx = ((values - vmin) / binsize).astype(int).ravel()
         probas = histogram[bin_idx]
-        return probas / sum(probas)
+        return probas.reshape(values.shape)
     return proba_fun
 
 ########################################################################################
