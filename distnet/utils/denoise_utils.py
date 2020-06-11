@@ -198,24 +198,20 @@ def get_output(batch, mask_coords, random_channel=True, min_probability=0, frequ
     """
     mask = np.zeros(batch.shape, dtype=batch.dtype)
     n_pix = float(np.prod(batch.shape[1:-1]))
+    c_mul = batch.shape[-1] if random_channel else 1
+    mask_value = c_mul * n_pix / len(mask_coords[0])
     if frequency_function is not None:
         assert balance_frequency_image is not None and balance_frequency_image.shape == batch.shape
-        def value_fun(coords):
-            values = min_probability + 1 - frequency_function(balance_frequency_image[coords])
-            return values * ( n_pix / np.sum(values) )
+        value_fun = lambda coords : mask_value * (min_probability + 1 - frequency_function(balance_frequency_image[coords]))
+    else:
+        value_fun = lambda coords : mask_value
     if random_channel and batch.shape[-1]>1:
-        if frequency_function is None:
-            mask_value = batch.shape[-1] * n_pix / len(mask_coords[0])
-            value_fun = lambda coords : mask_value
         c = np.random.randint(batch.shape[-1], size = mask_coords[0].shape[0])
         mask_coords = mask_coords + (c,)
         for b in range(batch.shape[0]):
             mask_idx = (b,) + mask_coords
             mask[mask_idx] = value_fun(mask_idx)
     else:
-        if frequency_function is None:
-            mask_value = n_pix / len(mask_coords[0])
-            value_fun = lambda coords : mask_value
         for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
             mask_idx = (b,) + mask_coords + (c,)
             mask[mask_idx] = value_fun(mask_idx)
