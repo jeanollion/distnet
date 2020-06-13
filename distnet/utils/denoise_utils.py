@@ -1,9 +1,10 @@
 import numpy as np
-from scipy.ndimage import convolve, median_filter, generic_filter
+from scipy.ndimage import convolve, median_filter, generic_filter, gaussian_filter1d
 from scipy.stats import multivariate_normal
 from numpy.random import randint
 import itertools
 from .helpers import ensure_multiplicity
+from scipy import interpolate
 #from robustats import weighted_median
 
 METHOD = ["AVERAGE", "RANDOM"]
@@ -106,7 +107,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 balance_frequency_image = kwargs["balance_frequency_image_function"](batch_per_channel)
             else:
                 balance_frequency_image=None
-            batch_per_channel[o_idx] = get_output(batch, mask_coords, random_channel=grid_random_channel, min_probability = kwargs.get("min_probability", 0), frequency_function=kwargs.get("balance_frequency_function", 0.5), balance_frequency_image=balance_frequency_image)
+            batch_per_channel[o_idx] = get_output(batch, mask_coords, random_channel=grid_random_channel, min_probability = kwargs.get("min_probability", 0), frequency_function=kwargs.get("balance_frequency_function", None), balance_frequency_image=balance_frequency_image)
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, mask_X_radius, image_shape)
             r_values = replacement_function(batch_per_channel, mask_coords)
@@ -665,12 +666,16 @@ def color_gauss_loss(y_true, y_pred, sigma_x, sigma2_n, regularization=False, dt
 
 #########################################################################################################
 ##############"" MISC ########### FOR TESTING PURPOSES
-def get_signal_frequency_balanced_mask(batch, frequency_function, probability_min=0):
+def get_signal_frequency_balanced_mask(batch, frequency_function, probability_min=0, pow=1):
     mask = np.zeros_like(batch)
     n_pix = float(np.prod(batch.shape[1:-1]))
     for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
-        mask_p = probability_min + 1 - frequency_function(batch[b,...,c])
+        mask_p = 1 - frequency_function(batch[b,...,c])
         mask[b,...,c] = n_pix * mask_p / np.sum(mask_p)
+    if pow!=1:
+        np.power(mask, pow, out=mask)
+    if probability_min>0:
+        np.maximum(mask, probability_min, out = mask)
     return mask
 
 # def get_proba_fun(histogram, breaks): # COULD BE OPTIMIZED -> COMPUTE BIN USING MIN/MAX/NBIN instead of digitize
@@ -688,6 +693,14 @@ def get_frequency_function(histogram, vmin, binsize):
         probas = histogram[bin_idx]
         return probas.reshape(values.shape)
     return proba_fun
+
+def get_smooth_frequency_function(histogram, breaks, smooth_sigma=1):
+    if smooth_sigma>0:
+        histogram = gaussian_filter1d(histogram, sigma=smooth_sigma, mode="constant")
+    histogram = histogram / np.sum(histogram)
+    breaks_center = (breaks[1:] + breaks[:-1])/2
+    mapping = interpolate.PchipInterpolator(breaks_center, histogram, extrapolate = False)
+    return lambda values : np.nan_to_num(mapping(values), copy=False)
 
 ########################################################################################
 ######################## UTILS #########################################################
