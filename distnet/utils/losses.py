@@ -107,10 +107,7 @@ def pixelwise_weighted_loss(original_loss_func, y_true_channels=None, weight_cha
     #@tf.function
     if y_true_channels is None:
         def loss_func(y_true, y_pred):
-            channels = tf.shape(y_true)[-1]
-            mid = channels // 2
-            weightMap = y_true[...,mid:]
-            y_true = y_true[...,0:mid]
+            y_true, weightMap = tf.split(y_true, 2, axis=-1)
             loss = original_loss_func(y_true, y_pred)
             if reshape_axis is not None:
                 loss = K.reshape(loss, reshape_axis)
