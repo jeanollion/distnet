@@ -51,7 +51,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 avg = median_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
             else:
                 avg = None
-            output = get_output(batch, mask_coords, random_channel=grid_random_channel, min_probability = kwargs.get("min_probability", 0), frequency_function=kwargs.get("balance_frequency_function", 0.5), balance_frequency_image=avg)
+            output = get_output(batch, mask_coords, random_channel=grid_random_channel, min_probability = kwargs.get("balance_frequency_min_probability", 0), frequency_function=kwargs.get("balance_frequency_function", 0.5), balance_frequency_image=avg, pow = kwargs.get("balance_frequency_power", 1))
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, mask_X_radius, image_shape)
             if method==METHOD[0] or method == "MEDIAN":
@@ -107,7 +107,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 balance_frequency_image = kwargs["balance_frequency_image_function"](batch_per_channel)
             else:
                 balance_frequency_image=None
-            batch_per_channel[o_idx] = get_output(batch, mask_coords, random_channel=grid_random_channel, min_probability = kwargs.get("min_probability", 0), frequency_function=kwargs.get("balance_frequency_function", None), balance_frequency_image=balance_frequency_image)
+            batch_per_channel[o_idx] = get_output(batch, mask_coords, random_channel=grid_random_channel, min_probability = kwargs.get("balance_frequency_min_probability", 0), frequency_function=kwargs.get("balance_frequency_function", None), balance_frequency_image=balance_frequency_image, pow = kwargs.get("balance_frequency_power", 1))
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, mask_X_radius, image_shape)
             r_values = replacement_function(batch_per_channel, mask_coords)
@@ -181,7 +181,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
     else:
         raise ValueError("Invalid method")
 
-def get_output(batch, mask_coords, random_channel=True, min_probability=0, frequency_function=None, balance_frequency_image=None):
+def get_output(batch, mask_coords, random_channel=True, min_probability=0, frequency_function=None, balance_frequency_image=None, pow=1):
     """Return the output of the blind denoising function
 
     Parameters
@@ -203,7 +203,7 @@ def get_output(batch, mask_coords, random_channel=True, min_probability=0, frequ
     mask_value = c_mul * n_pix / len(mask_coords[0])
     if frequency_function is not None:
         assert balance_frequency_image is not None and balance_frequency_image.shape == batch.shape
-        value_fun = lambda coords : mask_value * (min_probability + 1 - frequency_function(balance_frequency_image[coords]))
+        value_fun = lambda coords : 1 - frequency_function(balance_frequency_image[coords])
     else:
         value_fun = lambda coords : mask_value
     if random_channel and batch.shape[-1]>1:
@@ -216,6 +216,13 @@ def get_output(batch, mask_coords, random_channel=True, min_probability=0, frequ
         for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
             mask_idx = (b,) + mask_coords + (c,)
             mask[mask_idx] = value_fun(mask_idx)
+    if frequency_function is not None:
+        mask = mask * ( len(mask_coords[0]) * batch.shape[0] / np.sum(mask) )
+        if pow!=1:
+            np.power(mask, pow, out=mask)
+        if min_probability>0:
+            np.maximum(mask, min_probability, out = mask)
+        mask = mask * mask_value
     return np.concatenate([batch, mask], axis=-1)
 
 def random_increase_grid_shape(random_increase_shape, grid_shape):
