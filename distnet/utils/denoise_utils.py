@@ -423,7 +423,7 @@ def get_nd_gaussian_kernel(radius=1, sigma=0, ndim=2):
 
 def get_nd_gaussian_donut_kernel(radius=1, sigma=0, ndim=2, exclude_X=False):
     if radius<1:
-        assert ndim==2 and not exclude_X "radius < 1 : only supported in 2D without X exclusion"
+        assert ndim==2 and not exclude_X, "radius < 1 : only supported in 2D without X exclusion"
         return np.array([[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]])
     ker = get_nd_gaussian_kernel(radius, sigma, ndim)
     if exclude_X:
