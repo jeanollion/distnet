@@ -407,8 +407,10 @@ def get_nd_gaussian_kernel(radius=1, sigma=0, ndim=2):
         coords = np.mgrid[-radius:radius:complex(0, size), -radius:radius:complex(0, size)]
     elif ndim==3:
         coords = np.mgrid[-radius:radius:complex(0, size), -radius:radius:complex(0, size), -radius:radius:complex(0, size)]
+    elif ndim==4:
+        coords = np.mgrid[-radius:radius:complex(0, size), -radius:radius:complex(0, size), -radius:radius:complex(0, size), -radius:radius:complex(0, size)]
     else:
-        raise ValueError("Up to 3D supported")
+        raise ValueError("Up to 4D supported")
 
     # Need an (N, ndim) array of coords pairs.
     stacked = np.column_stack([c.flat for c in coords])
@@ -416,11 +418,13 @@ def get_nd_gaussian_kernel(radius=1, sigma=0, ndim=2):
     s = np.array([sigma if sigma>0 else radius]*ndim)
     covariance = np.diag(s**2)
     z = multivariate_normal.pdf(stacked, mean=mu, cov=covariance)
-    # Reshape back to a (30, 30) grid.
-    z = z.reshape(coords[0].shape)
+    z = z.reshape(coords[0].shape) # Reshape back to a (N, N) grid.
     return z/z.sum()
 
 def get_nd_gaussian_donut_kernel(radius=1, sigma=0, ndim=2, exclude_X=False):
+    if radius<1:
+        assert ndim==2 and not exclude_X "radius < 1 : only supported in 2D without X exclusion"
+        return np.array([[0, 0.25, 0], [0.25, 0, 0.25], [0, 0.25, 0]])
     ker = get_nd_gaussian_kernel(radius, sigma, ndim)
     if exclude_X:
         if ndim==1:
@@ -441,7 +445,7 @@ def get_nd_gaussian_donut_kernel(radius=1, sigma=0, ndim=2, exclude_X=False):
     return ker / ker.sum()
 
 AVG_KERNELS_1D = {r:get_nd_gaussian_donut_kernel(r, ndim=1)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
-AVG_KERNELS_2D = {r:get_nd_gaussian_donut_kernel(r, ndim=2)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
+AVG_KERNELS_2D = {r:get_nd_gaussian_donut_kernel(r, ndim=2)[np.newaxis, ..., np.newaxis] for r in [0.5, 1, 2, 3]}
 AVG_KERNELS_3D = {r:get_nd_gaussian_donut_kernel(r, ndim=3)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
 AVG_KERNELS_2D_X = {r:get_nd_gaussian_donut_kernel(r, ndim=2, exclude_X=True)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
 AVG_KERNELS_3D_X = {r:get_nd_gaussian_donut_kernel(r, ndim=3, exclude_X=True)[np.newaxis, ..., np.newaxis] for r in [1, 2, 3]}
