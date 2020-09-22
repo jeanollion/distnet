@@ -51,7 +51,7 @@ def get_blind_spot_masking_fun(method=METHOD[0], grid_shape=3, grid_random_incre
                 avg = median_batch(batch, radius = radius, exclude_X=mask_X_radius>0)
             else:
                 avg = None
-            output = get_output(batch, mask_coords, random_channel=grid_random_channel, min_probability = kwargs.get("balance_frequency_min_probability", 0), frequency_function=kwargs.get("balance_frequency_function", 0.5), balance_frequency_image=avg, pow = kwargs.get("balance_frequency_power", 1))
+            output = get_output(batch, mask_coords, random_channel=grid_random_channel, min_probability = kwargs.get("balance_frequency_min_probability", 0), frequency_function=kwargs.get("balance_frequency_function", None), balance_frequency_image=avg, pow = kwargs.get("balance_frequency_power", 1))
             if mask_X_radius>0:
                 mask_coords = get_extended_mask_coordsX(mask_coords, mask_X_radius, image_shape)
             if method==METHOD[0] or method == "MEDIAN":
