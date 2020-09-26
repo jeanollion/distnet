@@ -25,15 +25,17 @@ class ReflectionPadding2D(Layer):
       config.update({"padding": self.padding})
       return config
 
-class Gaussian2D(Layer):
-  def __init__(self, radius=1, **kwargs):
-    self.radius = radius
+class ConstantConvolution2D(Layer):
+  def __init__(self, kernelYX, **kwargs):
+    assert len(kernelYX.shape)==2, "2D kernel required"
+    for ax in [0, 1]:
+      assert kernelYX.shape[ax]>=1 and kernelYX.shape[ax]%2==1, "invalid kernel size along axis: {}".format(ax)
+    self.kernelYX = kernelYX[...,np.newaxis, np.newaxis]
     super().__init__(**kwargs)
 
   def build(self, input_shape):
     n_chan = input_shape[-1]
-    gauss_ker = get_nd_gaussian_kernel(radius=self.radius, ndim=2)[...,np.newaxis, np.newaxis]
-    kernel = tf.constant(gauss_ker, dtype=tf.float32)
+    kernel = tf.constant(self.kernelYX, dtype=tf.float32)
     if n_chan>1:
       self.kernel = tf.tile(kernel, [1, 1, n_chan, 1])
     else:
@@ -41,15 +43,22 @@ class Gaussian2D(Layer):
     self.pointwise_filter = tf.eye(n_chan, batch_shape=[1, 1])
 
   def compute_output_shape(self, input_shape):
-    return (input_shape[0], input_shape[1] - self.radius * 2, input_shape[2] - self.radius * 2, input_shape[3])
+    radY = (self.kernelYX.shape[0] - 1) / 2
+    radX = (self.kernelYX.shape[1] - 1) / 2
+    return (input_shape[0], input_shape[1] - radY * 2, input_shape[2] - radX * 2, input_shape[3])
 
   def call(self, input_tensor, mask=None):
     return tf.nn.separable_conv2d(input_tensor, self.kernel, self.pointwise_filter, strides=[1, 1, 1, 1], padding='VALID')
 
   def get_config(self):
     config = super().get_config().copy()
-    config.update({"radius": self.radius})
+    config.update({"kernelYX": self.kernelYX})
     return config
+
+class Gaussian2D(ConstantConvolution2D):
+  def __init__(self, radius=1, **kwargs):
+    gauss_ker = get_nd_gaussian_kernel(radius=self.radius, ndim=2)[...,np.newaxis, np.newaxis]
+    super().__init__(kernelYX = gauss_ker, **kwargs)
 
 def channel_attention(n_filters, activation='relu'): # TODO TEST + make layer or model + set name to layers
   def ca_fun(input):
@@ -113,6 +122,7 @@ class SplitContextCenterConv2D(Layer):
         conv = self.convL(conv_in) # BYX1F (valid padding on last conv axis -> size 1)
         return conv[:, :, :, 0, :]
 
+# TODO add periodic padding so that each color has access to the 2 other ones. test to perform the whole net in 4D. see https://stackoverflow.com/questions/39088489/tensorflow-periodic-padding
 class Conv3DYXC(Layer):
     def __init__(self, filters, kernelYX, padding="same", **kwargs): #padding can also be REFLECT
         self.kernelYX=tuple(ensure_multiplicity(2, kernelYX))
