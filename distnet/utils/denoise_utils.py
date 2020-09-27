@@ -720,3 +720,104 @@ def extract_along_batch_and_channel(batch, coords):
     for b, c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
         output[b, c] = batch[b,...,c][coords]
     return output
+
+########################################################################################
+####################### PSF ###########################################################
+
+def get_zyx_psf(dxy, dz, xy_size, z_size, wvl, M=100, NA=1.4, n=1.51, ng=1.515, ns=1.33, tg=170, wd=150, zd = 200.0 * 1.0e+3):
+    """Generates a 3D PSF array..
+    requires MicroscPSF: !pip install git+https://github.com/MicroscPSF/MicroscPSF-Py
+    Parameters
+    ----------
+    dxy : float
+        voxel dimension along xy (microns)
+    dz : float
+        voxel dimension along z (microns)
+    xy_size : int
+        size of PSF kernel along x and y (odd integer)
+    z_size : int
+        size of PSF kernel along z (odd integer)
+    wvl : float
+        Light wavelength (microns)
+    M : float
+        magnification
+    NA : float
+        numerical aperture
+    n : type
+        immersion medium RI
+    ng : type
+        coverslip RI
+    ns : type
+        specimen refractive index (RI)
+    tg : type
+        coverslip thickness (microns)
+    wd : type
+        working distance (immersion medium thickness, microns)
+    zd : type
+        microscope tube length (in microns).
+
+    Returns
+    -------
+    numpy array
+        psf array (zyx)
+
+    """
+    import microscPSF.microscPSF as msPSF
+    mp = dict(msPSF.m_params)
+    mp["M"] = M
+    mp["NA"] = NA
+    mp["ni0"] = n
+    mp["ni"] = n
+    mp["ng"] = ng
+    mp["ng0"] = ng
+    mp["ns"] = ns
+    mp["tg"] = tg
+    mp["tg0"] = tg
+    mp["ti0"] = wd
+    mp["zd0"] = zd
+
+    lz = (z_size) * dz
+    z_offset = -(lz - 2 * dz) / 2
+    pz = numpy.arange(0, lz, dz)
+    psf_xyz_array = msPSF.gLXYZParticleScan(mp = mp, dxy=dxy, xy_size=xy_size, pz=pz, wvl=wvl, zv = z_offset)
+
+    return psf_xyz_array
+
+def get_yx_psf(dxy, xy_size, wvl, M=100, NA=1.4, n=1.51, ng=1.515, ns=1.33, tg=170, wd=150, zd = 200.0 * 1.0e+3):
+    """Generates a 2D PSF array..
+    requires MicroscPSF: !pip install git+https://github.com/MicroscPSF/MicroscPSF-Py
+    Parameters
+    ----------
+    dxy : float
+        voxel dimension along xy (microns)
+    xy_size : int
+        size of PSF kernel along x and y (odd integer)
+    wvl : float
+        Light wavelength (microns)
+    M : float
+        magnification
+    NA : float
+        numerical aperture
+    n : type
+        immersion medium RI
+    ng : type
+        coverslip RI
+    ns : type
+        specimen refractive index (RI)
+    tg : type
+        coverslip thickness (microns)
+    wd : type
+        working distance (immersion medium thickness, microns)
+    zd : type
+        microscope tube length (in microns).
+
+    Returns
+    -------
+    numpy array
+        psf array (yx)
+
+    """
+    xyz_psf = get_xyz_psf(dxy, dxy, xy_size, xy_size, wvl, M, NA, n, ng, ns, tg, wd, zd)
+    xy_psf = xyz_psf[0]
+    xy_psf /= xy_psf.sum()
+    return xy_psf
