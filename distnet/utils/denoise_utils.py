@@ -743,17 +743,17 @@ def get_zyx_psf(dxy, dz, xy_size, z_size, wvl, M=100, NA=1.4, n=1.51, ng=1.515, 
         magnification
     NA : float
         numerical aperture
-    n : type
+    n : float
         immersion medium RI
-    ng : type
+    ng : float
         coverslip RI
-    ns : type
+    ns : float
         specimen refractive index (RI)
-    tg : type
+    tg : float
         coverslip thickness (microns)
-    wd : type
+    wd : float
         working distance (immersion medium thickness, microns)
-    zd : type
+    zd : float
         microscope tube length (in microns).
 
     Returns
@@ -775,7 +775,8 @@ def get_zyx_psf(dxy, dz, xy_size, z_size, wvl, M=100, NA=1.4, n=1.51, ng=1.515, 
     mp["tg0"] = tg
     mp["ti0"] = wd
     mp["zd0"] = zd
-
+    assert xy_size%2==1, "xy_size must be an odd number"
+    assert z_size%2==1, "z_size must be an odd number"
     lz = (z_size) * dz
     z_offset = -(lz - 2 * dz) / 2
     pz = np.arange(0, lz, dz)
@@ -798,17 +799,17 @@ def get_yx_psf(dxy, xy_size, wvl, M=100, NA=1.4, n=1.51, ng=1.515, ns=1.33, tg=1
         magnification
     NA : float
         numerical aperture
-    n : type
+    n : float
         immersion medium RI
-    ng : type
+    ng : float
         coverslip RI
-    ns : type
+    ns : float
         specimen refractive index (RI)
-    tg : type
+    tg : float
         coverslip thickness (microns)
-    wd : type
+    wd : float
         working distance (immersion medium thickness, microns)
-    zd : type
+    zd : float
         microscope tube length (in microns).
 
     Returns
@@ -818,6 +819,6 @@ def get_yx_psf(dxy, xy_size, wvl, M=100, NA=1.4, n=1.51, ng=1.515, ns=1.33, tg=1
 
     """
     xyz_psf = get_zyx_psf(dxy, dxy, xy_size, xy_size, wvl, M, NA, n, ng, ns, tg, wd, zd)
-    xy_psf = xyz_psf[0]
+    xy_psf = xyz_psf[ int((xy_size - 1) / 2) ]
     xy_psf /= xy_psf.sum()
     return xy_psf
