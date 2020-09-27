@@ -778,7 +778,7 @@ def get_zyx_psf(dxy, dz, xy_size, z_size, wvl, M=100, NA=1.4, n=1.51, ng=1.515, 
 
     lz = (z_size) * dz
     z_offset = -(lz - 2 * dz) / 2
-    pz = numpy.arange(0, lz, dz)
+    pz = np.arange(0, lz, dz)
     psf_xyz_array = msPSF.gLXYZParticleScan(mp = mp, dxy=dxy, xy_size=xy_size, pz=pz, wvl=wvl, zv = z_offset)
 
     return psf_xyz_array
