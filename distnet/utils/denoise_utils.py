@@ -817,7 +817,7 @@ def get_yx_psf(dxy, xy_size, wvl, M=100, NA=1.4, n=1.51, ng=1.515, ns=1.33, tg=1
         psf array (yx)
 
     """
-    xyz_psf = get_xyz_psf(dxy, dxy, xy_size, xy_size, wvl, M, NA, n, ng, ns, tg, wd, zd)
+    xyz_psf = get_zyx_psf(dxy, dxy, xy_size, xy_size, wvl, M, NA, n, ng, ns, tg, wd, zd)
     xy_psf = xyz_psf[0]
     xy_psf /= xy_psf.sum()
     return xy_psf
