@@ -9,8 +9,10 @@ import numpy as np
 class ReflectionPadding2D(Layer):
   def __init__(self, paddingYX=(1, 1), **kwargs):
     if not isinstance(paddingYX, (list, tuple)):
-      padding=(paddingYX, paddingYX)
-    self.padding = tuple(padding)
+      paddingYX=(paddingYX, paddingYX)
+    else:
+      assert len(paddingYX)==2, "padding should be of length 2"
+    self.padding = tuple(paddingYX)
     super().__init__(**kwargs)
 
   def compute_output_shape(self, input_shape):
