@@ -392,7 +392,7 @@ def predict_mask(model, batch, batch_masked=None, batch_mask=None, batch_shape =
         batch_shape = batch.shape
     image_shape = batch_shape[1:-1]
     for grid_offset in range(n_coords):
-        coords = get_mask_coords(grid_shape, np.unravel_index(grid_offset, grid_shape), image_shape)
+        mask_coords = get_mask_coords(grid_shape, np.unravel_index(grid_offset, grid_shape), image_shape)
         for b,c in itertools.product(range(batch_shape[0]), range(batch_shape[-1])):
             # mask batch along grid and predict
             mask_idx = (b,) + mask_coords + (c,)
