@@ -384,15 +384,24 @@ def predict_mask(model, batch, batch_mask, grid_shape):
     grid_shape = ensure_multiplicity(rank, grid_shape)
     n_coords = np.product(grid_shape)
     batch_masked = batch.copy()
-    output = np.zeros_like(batch)
+    output = None
     for offset in range(n_coords):
         coords = get_mask_coords(grid_shape, offset)
         for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
+            # mask batch along grid and predict
             mask_idx = (b,) + mask_coords + (c,)
             batch_masked[mask_idx] = batch_mask[mask_idx]
             pred = model.predict(batch_masked)
-            output[mask_idx] = pred[mask_idx]
             batch_masked[mask_idx] = batch[mask_idx]
+            # copy predicted values along grid
+            if output is None:
+                output = pred
+            else:
+                if isinstance(output, (list, tuple)):
+                    for o,p in itertools.zip(output, pred):
+                        o[mask_idx] = p[mask_idx]
+                else:
+                    output[mask_idx] = pred[mask_idx]
     return output
 
 #########################################################################################
