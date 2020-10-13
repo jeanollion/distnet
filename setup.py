@@ -11,7 +11,7 @@ setuptools.setup(
     description="keras implementation of DistNet, plus utilities for mother machine data analysis with keras",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/jeanollion/dlutils",
+    url="https://github.com/jeanollion/distnet",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
