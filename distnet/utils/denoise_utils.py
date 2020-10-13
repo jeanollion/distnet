@@ -379,12 +379,15 @@ def get_random_coords(patch_radius, offsets, img_shape, exclude_X = False):
         #coords[axis][mask] = 0
     return tuple(coords)
 
-def predict_mask(model, batch, batch_mask, grid_shape):
+def predict_mask(model, batch, batch_masked=None, batch_mask=None, grid_shape=5):
     rank = batch.ndim - 2
     grid_shape = ensure_multiplicity(rank, grid_shape)
     n_coords = np.product(grid_shape)
-    batch_masked = batch.copy()
+    if batch_masked is None:
+        batch_masked = batch.copy()
     output = None
+    if batch_mask is None:
+        batch_mask = average_batch(batch)
     for offset in range(n_coords):
         coords = get_mask_coords(grid_shape, offset)
         for b,c in itertools.product(range(batch.shape[0]), range(batch.shape[-1])):
