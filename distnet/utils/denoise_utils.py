@@ -404,7 +404,7 @@ def predict_mask(model, batch, batch_masked=None, batch_mask=None, batch_shape =
                 output = pred
             else:
                 if isinstance(output, (list, tuple)):
-                    for o,p in itertools.zip(output, pred):
+                    for o,p in zip(output, pred):
                         o[mask_idx] = p[mask_idx]
                 else:
                     output[mask_idx] = pred[mask_idx]
