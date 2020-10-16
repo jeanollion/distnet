@@ -385,7 +385,7 @@ def histogram_voodoo(image, num_control_points=5, intensity=0.5, target_points =
     if target_points is None:
         target_points = get_histogram_voodoo_target_points(control_points, intensity)
     elif target_points[0] != min or target_points[-1] != max:
-        print("target points borders differs: [{};{}] tp: {}".format(min, max, target_points))
+        #print("target points borders differs: [{};{}] tp: {}".format(min, max, target_points))
         target_points[0] = min
         target_points[-1] = max
     mapping = interpolate.PchipInterpolator(control_points, target_points)
