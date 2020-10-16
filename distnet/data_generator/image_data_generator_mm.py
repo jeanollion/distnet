@@ -161,9 +161,14 @@ class ImageDataGeneratorMM(ImageDataGenerator):
                     control_points = np.linspace(vmin, vmax, num=self.histogram_voodoo_n_points + 2)
                     target_points = pp.get_histogram_voodoo_target_points(control_points, self.histogram_voodoo_intensity)
                     params["histogram_voodoo_target_points"] = target_points
+                else:
+                    params["histogram_voodoo_target_points"] = None
+            else:
                 params["histogram_voodoo_target_points"] = None
             if self.illumination_voodoo_n_points>0 and self.illumination_voodoo_intensity>0 and not getrandbits(1):
                 params["illumination_voodoo_target_points"] = pp.get_illumination_voodoo_target_points(self.illumination_voodoo_n_points, self.illumination_voodoo_intensity)
+            else:
+                params["illumination_voodoo_target_points"] = None
         return params
 
     def adjust_augmentation_param_from_mask(self, params, mask_img):
