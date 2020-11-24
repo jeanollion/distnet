@@ -25,7 +25,7 @@ class UnetEncoder():
         self.padding=padding
         self.name=name
         self.layers=[]
-        assert n_down>0, "number of contractions should be >0"
+        assert n_down>=0, "number of contractions should be >0"
         self.n_down = n_down
         self.n_filters=n_filters
         self.anisotropic_conv=anisotropic_conv
@@ -189,7 +189,7 @@ class UnetDecoder():
                  padding='same', valid_padding_crop=None, name="decoder"):
         self.layers=[]
         self.name=name
-        assert n_up>0, "number of upsampling should be >0"
+        assert n_up>=0, "number of upsampling should be >0"
         self.n_up = n_up
         self.n_filters = n_filters
         self.padding=padding
@@ -508,6 +508,8 @@ def get_valid_padding_crop(n_contractions, n_conv_e, n_conv_d, size=0, conv_radi
     for i in range(n_contractions +1):
         start_size = size if i==0 else size_residual[-1] // 2
         size_residual.append(start_size - 2 * n_conv_e[i] * conv_radius[0])
+    if n_contractions==0:
+        return [], (size-size_residual[0])//2
     n_conv_d_rev = n_conv_d[::-1]
     size_concat = []
     for i in range(n_contractions):
