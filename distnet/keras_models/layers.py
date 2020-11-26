@@ -1,7 +1,6 @@
 from tensorflow import pad
 from tensorflow.keras.layers import Layer, GlobalAveragePooling2D, Reshape, Conv2D, Multiply, Conv3D
-from distnet.utils.denoise_utils import get_nd_gaussian_kernel
-from ..utils.helpers import ensure_multiplicity
+from ..utils.helpers import ensure_multiplicity, get_nd_gaussian_kernel
 from tensorflow.python.keras.engine.input_spec import InputSpec
 import tensorflow as tf
 import numpy as np

@@ -265,3 +265,25 @@ AUG_FUN_REV_2D = [
     lambda img : np.rot90(np.flip(img, axis=2), k=1, axes=(1,2)),
     lambda img : np.rot90(np.flip(img, axis=(1, 2)), k=3, axes=(1,2))
 ]
+
+def get_nd_gaussian_kernel(radius=1, sigma=0, ndim=2):
+    size = 2 * radius + 1
+    if ndim == 1:
+        coords = [np.mgrid[-radius:radius:complex(0, size)]]
+    elif ndim==2:
+        coords = np.mgrid[-radius:radius:complex(0, size), -radius:radius:complex(0, size)]
+    elif ndim==3:
+        coords = np.mgrid[-radius:radius:complex(0, size), -radius:radius:complex(0, size), -radius:radius:complex(0, size)]
+    elif ndim==4:
+        coords = np.mgrid[-radius:radius:complex(0, size), -radius:radius:complex(0, size), -radius:radius:complex(0, size), -radius:radius:complex(0, size)]
+    else:
+        raise ValueError("Up to 4D supported")
+
+    # Need an (N, ndim) array of coords pairs.
+    stacked = np.column_stack([c.flat for c in coords])
+    mu = np.array([0.0]*ndim)
+    s = np.array([sigma if sigma>0 else radius]*ndim)
+    covariance = np.diag(s**2)
+    z = multivariate_normal.pdf(stacked, mean=mu, cov=covariance)
+    z = z.reshape(coords[0].shape) # Reshape back to a (N, N) grid.
+    return z/z.sum()
