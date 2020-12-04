@@ -415,7 +415,7 @@ def get_custom_unet_model(
     spatial_dropout=True,
     residual=None,
     concatenate_outputs = False,
-    padding='same'):
+    padding='same', model_name = "UNet"):
     n_output_channels = ensure_multiplicity(n_outputs, n_output_channels)
     out_activations = ensure_multiplicity(n_outputs, out_activations)
     n_input_channels = ensure_multiplicity(n_inputs, n_input_channels)
@@ -493,7 +493,7 @@ def get_custom_unet_model(
         all_outputs = [output]
     if use_self_attention and output_attention_weights:
         all_outputs.append(attention_weights)
-    model = Model(input, flatten_list(all_outputs), name="UNet")
+    model = Model(input, flatten_list(all_outputs), name=model_name)
     if padding == "valid":
         return model, output_crop
     else:
