@@ -7,10 +7,7 @@ import numpy as np
 
 class ReflectionPadding2D(Layer):
   def __init__(self, paddingYX=(1, 1), **kwargs):
-    if not isinstance(paddingYX, (list, tuple)):
-      paddingYX=(paddingYX, paddingYX)
-    else:
-      assert len(paddingYX)==2, "padding should be of length 2"
+    paddingYX = ensure_multiplicity(2, paddingYX)
     self.padding = tuple(paddingYX)
     super().__init__(**kwargs)
 
@@ -28,7 +25,7 @@ class ReflectionPadding2D(Layer):
 
 class ConstantConvolution2D(Layer):
   def __init__(self, kernelYX, **kwargs):
-    assert len(kernelYX.shape)==2, "2D kernel required"
+    kernelYX = ensure_multiplicity(2, kernelYX)
     for ax in [0, 1]:
       assert kernelYX.shape[ax]>=1 and kernelYX.shape[ax]%2==1, "invalid kernel size along axis: {}".format(ax)
     self.kernelYX = kernelYX[...,np.newaxis, np.newaxis]
