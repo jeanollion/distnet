@@ -2,8 +2,7 @@ import numpy as np
 import warnings
 from time import sleep
 import subprocess
-from tensorflow.keras.callbacks import Callback
-
+from tensorflow.keras.callbacks import Callback, ReduceLROnPlateau
 
 class PatchedModelCheckpoint(Callback):
     """Save the model after every epoch.
@@ -162,3 +161,25 @@ class PatchedModelCheckpoint(Callback):
                     except Exception as error:
                         print('Error while trying to save the model: {}.\nTrying again...'.format(error))
                         sleep(5)
+
+class PersistentReduceLROnPlateau(ReduceLROnPlateau):
+    def __init__(self,
+        monitor='val_loss',
+        factor=0.1,
+        patience=10,
+        verbose=0,
+        mode='auto',
+        min_delta=1e-4,
+        cooldown=0,
+        min_lr=0,
+        **kwargs):
+       super().__init__(monitor, factor, patience, verbose, mode, min_delta, cooldown, min_lr)
+       if "cooldown_counter" in kwargs:
+           self.cooldown_counter = kwargs["cooldown_counter"]
+       if "wait" in kwargs:
+           self.wait = kwargs["wait"]
+       if "best" in kwargs and kwargs["best"] is not None:
+           self.best = kwargs["best"]
+
+    def on_train_begin(self, logs=None):
+        pass

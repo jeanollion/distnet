@@ -1,3 +1,3 @@
 
-from .patched_model_checkpoint import PatchedModelCheckpoint
+from .callbacks import PatchedModelCheckpoint, PersistentReduceLROnPlateau
 from .helpers import predict_average_flip_rotate
