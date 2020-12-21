@@ -24,11 +24,12 @@ class ReflectionPadding2D(Layer):
       return config
 
 class ConstantConvolution2D(Layer):
-  def __init__(self, kernelYX, **kwargs):
+  def __init__(self, kernelYX, reflection_padding=False, **kwargs):
     kernelYX = ensure_multiplicity(2, kernelYX)
     for ax in [0, 1]:
       assert kernelYX.shape[ax]>=1 and kernelYX.shape[ax]%2==1, "invalid kernel size along axis: {}".format(ax)
     self.kernelYX = kernelYX[...,np.newaxis, np.newaxis]
+    self.reflection_padding=reflection_padding
     super().__init__(**kwargs)
 
   def build(self, input_shape):
@@ -39,18 +40,21 @@ class ConstantConvolution2D(Layer):
     else:
       self.kernel = kernel
     self.pointwise_filter = tf.eye(n_chan, batch_shape=[1, 1])
+    self.padL = ReflectionPadding2D((self.kernelYX.shape-1)//2) if self.reflection_padding else None
 
   def compute_output_shape(self, input_shape):
-    radY = (self.kernelYX.shape[0] - 1) / 2
-    radX = (self.kernelYX.shape[1] - 1) / 2
+    radY = (self.kernelYX.shape[0] - 1) // 2
+    radX = (self.kernelYX.shape[1] - 1) // 2
     return (input_shape[0], input_shape[1] - radY * 2, input_shape[2] - radX * 2, input_shape[3])
 
   def call(self, input_tensor, mask=None):
+    if self.padL is not None:
+      input_tensor = self.padL(input_tensor)
     return tf.nn.separable_conv2d(input_tensor, self.kernel, self.pointwise_filter, strides=[1, 1, 1, 1], padding='VALID')
 
   def get_config(self):
     config = super().get_config().copy()
-    config.update({"kernelYX": self.kernelYX})
+    config.update({"kernelYX": self.kernelYX, "reflection_padding":reflection_padding})
     return config
 
 class Gaussian2D(ConstantConvolution2D):
