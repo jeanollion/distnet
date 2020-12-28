@@ -201,43 +201,34 @@ def displayProgressBar(max): # this progress bar is compatible with google colab
         out.update(progress(currentProgress[0]))
     return callback
 
-def predict_average_flip_rotate(model, batch, rotate90 = True, list_flips=[0,1,2]):
-    if not isinstance(list_flips, (tuple, list)):
-        list_flips = [list_flips]
-    batch_list = _append_flip_and_rotate_list(batch, list_flips, rotate90)
+def predict_average_flip_rotate(model, batch, allow_permute_axes = True):
+    list_flips=[0,1,2] if allow_permute_axes else [0, 1]
+    batch_list = _append_flip_and_rotate_list(batch, list_flips)
     predicted_list = [model(b) for b in batch_list]
     # transform back
     if isinstance(predicted_list[0], (tuple, list)):
         predicted_list = _transpose(predicted_list)
-        return tuple([_reverse_and_mean(l, rotate90, list_flips) for l in predicted_list])
+        return tuple([_reverse_and_mean(l, list_flips) for l in predicted_list])
     else:
-        return _reverse_and_mean(predicted_list, rotate90, list_flips)
+        return _reverse_and_mean(predicted_list, list_flips)
 
-def _append_flip_and_rotate_list(batch, rotate90=True, list_flips=[0,1,2]):
+def _append_flip_and_rotate_list(batch, list_transfo):
     if isinstance(batch, (tuple, list)):
         batch_list = []
         for i in range(len(batch)):
-            batch_list.append(_append_flip_and_rotate(batch, list_flips, rotate90))
+            batch_list.append(_append_flip_and_rotate(batch, list_transfo))
         return _transpose(batch_list)
     else:
-        return _append_flip_and_rotate(batch, list_flips, rotate90)
+        return _append_flip_and_rotate(batch, list_transfo)
 
-def _append_flip_and_rotate(batch, rotate90=True, list_flips=[0,1,2]):
-    trans = [batch] + [AUG_FUN_2D[flip+1](batch) for flip in list_flips]
-    if rotate90:
-        trans +=[AUG_FUN_2D[4](batch)]
-        trans = trans + [AUG_FUN_2D[i+5](batch) for i in list_flips]
+def _append_flip_and_rotate(batch, list_transfo):
+    trans = [batch] + [AUG_FUN_2D[transfo_idx](batch) for transfo_idx in list_transfo]
     return trans
 
-def _reverse_and_mean(image_list, rotate90 = True, list_flips=[0,1,2]):
-    n_flips = len(list_flips)
-    for idx, i in enumerate(list_flips):
-        image_list[idx+1] = AUG_FUN_REV_2D[i+1](image_list[idx+1])
-    if rotate90:
-        image_list[n_flips+1] = AUG_FUN_REV_2D[4](image_list[n_flips+1])
-        for idx, i in enumerate(list_flips):
-            img_idx = idx + n_flips + 2
-            image_list[img_idx] = AUG_FUN_REV_2D[i + 5](image_list[img_idx])
+def _reverse_and_mean(image_list, list_transfo):
+    n_flips = len(list_transfo)
+    for idx, transfo_idx in enumerate(list_transfo):
+        image_list[idx+1] = AUG_FUN_2D[transfo_idx](image_list[idx+1])
     return np.mean(image_list, axis=0)
 
 def _transpose(list_of_list):
@@ -246,25 +237,30 @@ def _transpose(list_of_list):
     return [ [ list_of_list[i][j] for i in range(size1)] for j in range(size2) ]
 
 AUG_FUN_2D = [
-    lambda img : img,
     lambda img : np.flip(img, axis=1),
     lambda img : np.flip(img, axis=2),
-    lambda img : np.flip(img, axis=(1, 2)),
-    lambda img : np.rot90(img, k=1, axes=(1,2)),
-    lambda img : np.rot90(img, k=3, axes=(1,2)), # rot + flip0
-    lambda img : np.rot90(np.flip(img, axis=2), k=1, axes=(1,2)),
-    lambda img : np.rot90(np.flip(img, axis=(1, 2)), k=1, axes=(1,2))
+    lambda img : np.transpose(img, axes=(0, 2, 1, 3))
 ]
-AUG_FUN_REV_2D = [
-    lambda img : img,
-    lambda img : np.flip(img, axis=1),
-    lambda img : np.flip(img, axis=2),
-    lambda img : np.flip(img, axis=(1, 2)),
-    lambda img : np.rot90(img, k=3, axes=(1,2)),
-    lambda img : np.rot90(img, k=1, axes=(1,2)), # rot + flip0
-    lambda img : np.rot90(np.flip(img, axis=2), k=1, axes=(1,2)),
-    lambda img : np.rot90(np.flip(img, axis=(1, 2)), k=3, axes=(1,2))
-]
+# AUG_FUN_2D = [
+#     lambda img : img,
+#     lambda img : np.flip(img, axis=1),
+#     lambda img : np.flip(img, axis=2),
+#     lambda img : np.flip(img, axis=(1, 2)),
+#     lambda img : np.rot90(img, k=1, axes=(1,2)),
+#     lambda img : np.rot90(img, k=3, axes=(1,2)), # rot + flip0
+#     lambda img : np.rot90(np.flip(img, axis=2), k=1, axes=(1,2)),
+#     lambda img : np.rot90(np.flip(img, axis=(1, 2)), k=1, axes=(1,2))
+# ]
+# AUG_FUN_REV_2D = [
+#     lambda img : img,
+#     lambda img : np.flip(img, axis=1),
+#     lambda img : np.flip(img, axis=2),
+#     lambda img : np.flip(img, axis=(1, 2)),
+#     lambda img : np.rot90(img, k=3, axes=(1,2)),
+#     lambda img : np.rot90(img, k=1, axes=(1,2)), # rot + flip0
+#     lambda img : np.rot90(np.flip(img, axis=2), k=1, axes=(1,2)),
+#     lambda img : np.rot90(np.flip(img, axis=(1, 2)), k=3, axes=(1,2))
+# ]
 
 def get_nd_gaussian_kernel(radius=1, sigma=0, ndim=2):
     size = 2 * radius + 1
