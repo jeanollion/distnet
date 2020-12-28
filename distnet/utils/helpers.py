@@ -209,7 +209,7 @@ def predict_average_flip_rotate(model, batch, rotate90 = True, list_flips=[0,1,2
     # transform back
     if isinstance(predicted_list[0], (tuple, list)):
         predicted_list = _transpose(predicted_list)
-        return [_reverse_and_mean(l, rotate90, list_flips) for l in predicted_list]
+        return tuple([_reverse_and_mean(l, rotate90, list_flips) for l in predicted_list])
     else:
         return _reverse_and_mean(predicted_list, rotate90, list_flips)
 
