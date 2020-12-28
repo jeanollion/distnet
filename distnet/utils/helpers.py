@@ -202,12 +202,12 @@ def displayProgressBar(max): # this progress bar is compatible with google colab
     return callback
 
 def predict_average_flip_rotate(model, batch, rotate90 = True, list_flips=[0,1,2]):
-    if not isinstance(list_flips, list):
+    if not isinstance(list_flips, (tuple, list)):
         list_flips = [list_flips]
     batch_list = _append_flip_and_rotate_list(batch, list_flips, rotate90)
-    predicted_list = [model.predict(b) for b in batch_list]
+    predicted_list = [model(b) for b in batch_list]
     # transform back
-    if isinstance(predicted_list[0], list):
+    if isinstance(predicted_list[0], (tuple, list)):
         predicted_list = _transpose(predicted_list)
         return [_reverse_and_mean(l, rotate90, list_flips) for l in predicted_list]
     else:
