@@ -241,26 +241,6 @@ AUG_FUN_2D = [
     lambda img : np.flip(img, axis=2),
     lambda img : np.transpose(img, axes=(0, 2, 1, 3))
 ]
-# AUG_FUN_2D = [
-#     lambda img : img,
-#     lambda img : np.flip(img, axis=1),
-#     lambda img : np.flip(img, axis=2),
-#     lambda img : np.flip(img, axis=(1, 2)),
-#     lambda img : np.rot90(img, k=1, axes=(1,2)),
-#     lambda img : np.rot90(img, k=3, axes=(1,2)), # rot + flip0
-#     lambda img : np.rot90(np.flip(img, axis=2), k=1, axes=(1,2)),
-#     lambda img : np.rot90(np.flip(img, axis=(1, 2)), k=1, axes=(1,2))
-# ]
-# AUG_FUN_REV_2D = [
-#     lambda img : img,
-#     lambda img : np.flip(img, axis=1),
-#     lambda img : np.flip(img, axis=2),
-#     lambda img : np.flip(img, axis=(1, 2)),
-#     lambda img : np.rot90(img, k=3, axes=(1,2)),
-#     lambda img : np.rot90(img, k=1, axes=(1,2)), # rot + flip0
-#     lambda img : np.rot90(np.flip(img, axis=2), k=1, axes=(1,2)),
-#     lambda img : np.rot90(np.flip(img, axis=(1, 2)), k=3, axes=(1,2))
-# ]
 
 def get_nd_gaussian_kernel(radius=1, sigma=0, ndim=2):
     size = 2 * radius + 1
