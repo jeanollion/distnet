@@ -147,16 +147,13 @@ class PatchedModelCheckpoint(Callback):
                 while not saved_correctly:
                     try:
                         if self.save_weights_only:
-                            self.model.save_weights(filepath+str(epoch), overwrite=True)
+                            self.model.save_weights(filepath, overwrite=True)
                         else:
-                            self.model.save(filepath+str(epoch), overwrite=True)
+                            self.model.save(filepath, overwrite=True)
                         if filepath_dest:
-                            self._copy_file(filepath+str(epoch), filepath_dest)
-                        self._remove_file(filepath)
-                        if epoch>0:
-                            self._remove_file(filepath+str(epoch-1))
-                        if not filepath_dest:
-                            self._copy_file(filepath+str(epoch), filepath)
+                            self._copy_file(filepath, filepath_dest)
+                        if filepath_prev and filepath_prev!=filepath:
+                            self._remove_file(filepath_prev)
                         saved_correctly = True
                     except Exception as error:
                         print('Error while trying to save the model: {}.\nTrying again...'.format(error))
