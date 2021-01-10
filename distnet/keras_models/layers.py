@@ -25,7 +25,7 @@ class ReflectionPadding2D(Layer):
 
 class ConstantConvolution2D(Layer):
   def __init__(self, kernelYX, reflection_padding=False, **kwargs):
-    kernelYX = ensure_multiplicity(2, kernelYX)
+    assert len(kernelYX.shape)==2
     for ax in [0, 1]:
       assert kernelYX.shape[ax]>=1 and kernelYX.shape[ax]%2==1, "invalid kernel size along axis: {}".format(ax)
     self.kernelYX = kernelYX[...,np.newaxis, np.newaxis]
@@ -40,7 +40,7 @@ class ConstantConvolution2D(Layer):
     else:
       self.kernel = kernel
     self.pointwise_filter = tf.eye(n_chan, batch_shape=[1, 1])
-    self.padL = ReflectionPadding2D((self.kernelYX.shape-1)//2) if self.reflection_padding else None
+    self.padL = ReflectionPadding2D([(dim-1)//2 for dim in self.kernelYX.shape[:-2]] ) if self.reflection_padding else None
 
   def compute_output_shape(self, input_shape):
     radY = (self.kernelYX.shape[0] - 1) // 2
