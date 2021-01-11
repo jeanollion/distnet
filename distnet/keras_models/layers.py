@@ -43,6 +43,8 @@ class ConstantConvolution2D(Layer):
     self.padL = ReflectionPadding2D([(dim-1)//2 for dim in self.kernelYX.shape[:-2]] ) if self.reflection_padding else None
 
   def compute_output_shape(self, input_shape):
+    if self.reflection_padding:
+        return input_shape
     radY = (self.kernelYX.shape[0] - 1) // 2
     radX = (self.kernelYX.shape[1] - 1) // 2
     return (input_shape[0], input_shape[1] - radY * 2, input_shape[2] - radX * 2, input_shape[3])
