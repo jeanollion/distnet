@@ -30,17 +30,18 @@ class ConstantConvolution2D(Layer):
       assert kernelYX.shape[ax]>=1 and kernelYX.shape[ax]%2==1, "invalid kernel size along axis: {}".format(ax)
     self.kernelYX = kernelYX[...,np.newaxis, np.newaxis]
     self.reflection_padding=reflection_padding
+    self.padL = ReflectionPadding2D([(dim-1)//2 for dim in self.kernelYX.shape[:-2]] ) if self.reflection_padding else None
+    self.n_chan = kwargs.pop("n_chan", None)
     super().__init__(**kwargs)
 
   def build(self, input_shape):
-    n_chan = input_shape[-1]
+    n_chan = input_shape[-1] if input_shape[-1] is not None else self.n_chan
     kernel = tf.constant(self.kernelYX, dtype=tf.float32)
     if n_chan>1:
       self.kernel = tf.tile(kernel, [1, 1, n_chan, 1])
     else:
       self.kernel = kernel
     self.pointwise_filter = tf.eye(n_chan, batch_shape=[1, 1])
-    self.padL = ReflectionPadding2D([(dim-1)//2 for dim in self.kernelYX.shape[:-2]] ) if self.reflection_padding else None
 
   def compute_output_shape(self, input_shape):
     if self.reflection_padding:
