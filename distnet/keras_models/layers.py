@@ -37,6 +37,7 @@ class ConstantConvolution2D(Layer):
   def build(self, input_shape):
     n_chan = input_shape[-1] if input_shape[-1] is not None else self.n_chan
     if n_chan is None:
+        self.kernel=None
         return
     kernel = tf.constant(self.kernelYX, dtype=tf.float32)
     if n_chan>1:
