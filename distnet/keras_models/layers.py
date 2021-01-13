@@ -53,6 +53,8 @@ class ConstantConvolution2D(Layer):
     return (input_shape[0], input_shape[1] - radY * 2, input_shape[2] - radX * 2, input_shape[3])
 
   def call(self, input_tensor, mask=None):
+    if self.kernel is None: #build was initiated with None shape
+        return input_tensor
     if self.padL is not None:
       input_tensor = self.padL(input_tensor)
     return tf.nn.separable_conv2d(input_tensor, self.kernel, self.pointwise_filter, strides=[1, 1, 1, 1], padding='VALID')
