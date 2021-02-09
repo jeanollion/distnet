@@ -180,3 +180,62 @@ class PersistentReduceLROnPlateau(ReduceLROnPlateau):
 
     def on_train_begin(self, logs=None):
         pass
+
+
+##
+## define the callback :
+#set the loss function:
+#add the callback  to the model
+#remember to set pre_processing.level_set as weightmap function
+
+class EpochNumberCallback(Callback):
+    """Callback that allows to have a keras variable that depends on epoch number
+    Useful to mix 2 losses with relative weights that vary with epoch number as in https://arxiv.org/abs/1812.07032
+    Use case with boundary loss:
+    alpha_cb = EpochNumberCallback(EpochNumberCallback.linear_decay(n_epochs, 0.01))
+    loss_fun = boundary_regional_loss(alpha_cb.get_variable(), regional_loss_fun)
+
+    Parameters
+    ----------
+    fun : function (int -> float)
+        function applied to epoch number
+
+    Attributes
+    ----------
+    variable : keras variable
+        variable updated by fun at each epoch
+    fun : function
+        Function
+
+    """
+    def __init__(self, fun=lambda v : v ):
+        self.fun = fun
+        self.variable = K.variable(fun(0))
+
+    def on_epoch_end(self, epoch, logs={}):
+        K.set_value(self.variable, self.fun(epoch + 1))
+
+    def get_variable(self):
+        return self.variable
+
+    @staticmethod
+    def linear_decay(total_epochs, minimal_value):
+        assert minimal_value<=1, "minimal value must be <=1"
+        return lambda current_epoch : max(minimal_value, 1 - current_epoch / total_epochs)
+
+    @staticmethod
+    def switch(epoch, before=1., after=0):
+        return lambda current_epoch : before if current_epoch<epoch else after
+
+    @staticmethod
+    def soft_switch(epoch_start, epoch_end, before=1., after=0):
+        assert epoch_start<epoch_end
+        def fun(current_epoch):
+            if current_epoch<=epoch_start:
+                return before
+            elif current_epoch>=epoch_end:
+                return after
+            else:
+                alpha  = (current_epoch - epoch_start) / (epoch_end - epoch_start)
+                return before * (1 - alpha) + after * alpha
+        return fun
