@@ -137,12 +137,12 @@ class ImageDataGeneratorMM(ImageDataGenerator):
         # illumination parameters
         if self.perform_illumination_augmentation:
             if self.histogram_normalization_center is not None and self.histogram_normalization_scale is not None: # center / scale mode
-                if isinstance(self.histogram_normalization_center, (list, tuple)):
+                if isinstance(self.histogram_normalization_center, (list, tuple, np.ndarray)):
                     assert len(self.histogram_normalization_center)==2, "if histogram_normalization_center is a list/tuple it represent a range and should be of length 2"
                     params["center"] = uniform(self.histogram_normalization_center[0], self.histogram_normalization_center[1])
                 else:
                     params["center"] = self.histogram_normalization_center
-                if isinstance(self.histogram_normalization_scale, (list, tuple)):
+                if isinstance(self.histogram_normalization_scale, (list, tuple, np.ndarray)):
                     assert len(self.histogram_normalization_scale)==2, "if histogram_normalization_scale is a list/tuple it represent a range and should be of length 2"
                     params["scale"] = uniform(self.histogram_normalization_scale[0], self.histogram_normalization_scale[1])
                 else:

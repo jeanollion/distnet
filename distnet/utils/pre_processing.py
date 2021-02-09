@@ -453,7 +453,7 @@ def get_histogram_normalization_center_scale_ranges(histogram, bins, center_perc
         scale_percentile_range = list(scale_percentile_range)
     percentiles = percentiles + scale_percentile_range
     values = dih.get_percentile(histogram, bins, percentiles)
-    mode_range = values[:2]
+    mode_range = [values[0], values[1] ]
     scale_range = [values[2] - mode_value, values[3] - mode_value]
     if verbose:
         print("normalization_center_scale: modal value: {}, center_range: [{}; {}] scale_range: [{}; {}]".format(mode_value, mode_range[0], mode_range[1], scale_range[0], scale_range[1]))
