@@ -11,6 +11,11 @@ try:
 	import edt
 except Exception:
 	pass
+try:
+    import dataset_iterator.helpers as dih
+except:
+    dih=None
+from .helpers import ensure_multiplicity
 
 def batch_wise_fun(fun):
 	#return lambda batch : np.stack([fun(batch[i]) for i in range(batch.shape[0])], 0)
@@ -435,3 +440,21 @@ def get_illumination_voodoo_target_points(num_control_points, intensity):
     if intensity>=1 or intensity<=0:
         raise ValueError("Intensity should be in range ]0, 1[")
     return np.random.uniform(low=(1 - intensity) / 2.0, high=(1 + intensity) / 2.0, size=num_control_points)
+
+def get_histogram_normalization_center_scale_ranges(histogram, bins, center_percentile_extent, scale_percentile_range, verbose=False):
+    assert dih is not None, "dataset_iterator package is required for this method"
+    mode_value = dih.get_modal_value(histogram, bins)
+    mode_percentile = dih.get_percentile_from_value(histogram, bins, mode_value)
+    print("model value: {}, percentile: {}".format(mode_value, mode_percentile))
+    assert mode_percentile<scale_percentile_range[0], "mode percentile is {} and must be lower than lower bound of scale_percentile_range={}".format(mode_percentile, scale_percentile_range)
+    percentiles = [max(0, mode_percentile-center_percentile_extent), min(100, mode_percentile+center_percentile_extent)]
+    scale_percentile_range = ensure_multiplicity(2, scale_percentile_range)
+    if isinstance(scale_percentile_range, tuple):
+        scale_percentile_range = list(scale_percentile_range)
+    percentiles = percentiles + scale_percentile_range
+    values = dih.get_percentile(histogram, bins, percentiles)
+    mode_range = values[:2]
+    scale_range = [values[2] - mode_value, values[3] - mode_value]
+    if verbose:
+        print("normalization_center_scale: modal value: {}, center_range: [{}; {}] scale_range: [{}; {}]".format(mode_value, mode_range[0], mode_range[1], scale_range[0], scale_range[1]))
+    return mode_range, scale_range

@@ -8,7 +8,7 @@ import copy
 import scipy.ndimage as ndi
 
 class ImageDataGeneratorMM(ImageDataGenerator):
-    def __init__(self, rotate90=False, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, min_histogram_to_zero=False, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, bacteria_swim_distance=50, bacteria_swim_min_gap=3, closed_end=True, **kwargs):
+    def __init__(self, rotate90=False, width_zoom_range=0., height_zoom_range=0., max_zoom_aspectratio=1.5, min_zoom_aspectratio=0., perform_illumination_augmentation = True, gaussian_blur_range=[1, 2], noise_intensity = 0.1, min_histogram_range=0.1, min_histogram_to_zero=False, histogram_normalization_center=None, histogram_normalization_scale=None, histogram_voodoo_n_points=5, histogram_voodoo_intensity=0.5, illumination_voodoo_n_points=5, illumination_voodoo_intensity=0.6, bacteria_swim_distance=50, bacteria_swim_min_gap=3, closed_end=True, **kwargs):
         if width_zoom_range is None:
             width_zoom_range=0
         if height_zoom_range is None:
@@ -56,6 +56,8 @@ class ImageDataGeneratorMM(ImageDataGenerator):
         self.bacteria_swim_distance=bacteria_swim_distance
         self.bacteria_swim_min_gap=bacteria_swim_min_gap
         self.closed_end = closed_end
+        self.histogram_normalization_center=histogram_normalization_center
+        self.histogram_normalization_scale=histogram_normalization_scale
         super().__init__(**kwargs)
 
     def get_random_transform(self, img_shape, seed=None):
@@ -134,17 +136,29 @@ class ImageDataGeneratorMM(ImageDataGenerator):
             params["rotate90"] = True
         # illumination parameters
         if self.perform_illumination_augmentation:
-            if self.min_histogram_range<1 and self.min_histogram_range>0:
-                if self.min_histogram_to_zero:
-                    params["vmin"] = 0
-                    params["vmax"] = uniform(self.min_histogram_range, 1)
+            if self.histogram_normalization_center is not None and self.histogram_normalization_scale is not None: # center / scale mode
+                if isinstance(self.histogram_normalization_center, (list, tuple)):
+                    assert len(self.histogram_normalization_center)==2, "if histogram_normalization_center is a list/tuple it represent a range and should be of length 2"
+                    params["center"] = uniform(self.histogram_normalization_center[0], self.histogram_normalization_center[1])
                 else:
-                    vmin, vmax = pp.compute_histogram_range(self.min_histogram_range)
-                    params["vmin"] = vmin
-                    params["vmax"] = vmax
-            elif self.min_histogram_range==1:
-                params["vmin"] = 0
-                params["vmax"] = 1
+                    params["center"] = histogram_normalization_center
+                if isinstance(self.histogram_normalization_scale, (list, tuple)):
+                    assert len(self.histogram_normalization_scale)==2, "if histogram_normalization_scale is a list/tuple it represent a range and should be of length 2"
+                    params["scale"] = uniform(self.histogram_normalization_scale[0], self.histogram_normalization_scale[1])
+                else:
+                    params["scale"] = histogram_normalization_scale
+            else: # min max mode
+                if self.min_histogram_range<1 and self.min_histogram_range>0:
+                    if self.min_histogram_to_zero:
+                        params["vmin"] = 0
+                        params["vmax"] = uniform(self.min_histogram_range, 1)
+                    else:
+                        vmin, vmax = pp.compute_histogram_range(self.min_histogram_range)
+                        params["vmin"] = vmin
+                        params["vmax"] = vmax
+                elif self.min_histogram_range==1:
+                    params["vmin"] = 0
+                    params["vmax"] = 1
             if self.noise_intensity>0:
                 poisson, speckle, gaussian = pp.get_random_noise_parameters(self.noise_intensity)
                 params["poisson_noise"] = poisson
@@ -222,7 +236,13 @@ class ImageDataGeneratorMM(ImageDataGenerator):
         if params.get("rotate90", False):
             img = np.rot90(img, k=1, axes=(0, 1))
         # illumination augmentation
-        if "vmin" in params and "vmax" in params:
+        img = _perform_illumination_augmentation(self, img, params)
+        return img
+
+    def _perform_illumination_augmentation(self, img, params):
+        if "center" in params and "scale" in params:
+            img = (img - params["center"]) / params["scale"]
+        elif "vmin" in params and "vmax" in params:
             min = img.min()
             max = img.max()
             if min==max:
