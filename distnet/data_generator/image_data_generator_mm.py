@@ -141,12 +141,12 @@ class ImageDataGeneratorMM(ImageDataGenerator):
                     assert len(self.histogram_normalization_center)==2, "if histogram_normalization_center is a list/tuple it represent a range and should be of length 2"
                     params["center"] = uniform(self.histogram_normalization_center[0], self.histogram_normalization_center[1])
                 else:
-                    params["center"] = histogram_normalization_center
+                    params["center"] = self.histogram_normalization_center
                 if isinstance(self.histogram_normalization_scale, (list, tuple)):
                     assert len(self.histogram_normalization_scale)==2, "if histogram_normalization_scale is a list/tuple it represent a range and should be of length 2"
                     params["scale"] = uniform(self.histogram_normalization_scale[0], self.histogram_normalization_scale[1])
                 else:
-                    params["scale"] = histogram_normalization_scale
+                    params["scale"] = self.histogram_normalization_scale
             else: # min max mode
                 if self.min_histogram_range<1 and self.min_histogram_range>0:
                     if self.min_histogram_to_zero:
