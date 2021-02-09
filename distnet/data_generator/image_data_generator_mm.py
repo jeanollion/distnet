@@ -236,7 +236,7 @@ class ImageDataGeneratorMM(ImageDataGenerator):
         if params.get("rotate90", False):
             img = np.rot90(img, k=1, axes=(0, 1))
         # illumination augmentation
-        img = _perform_illumination_augmentation(self, img, params)
+        img = self._perform_illumination_augmentation(img, params)
         return img
 
     def _perform_illumination_augmentation(self, img, params):
