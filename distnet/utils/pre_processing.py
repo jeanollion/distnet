@@ -445,7 +445,7 @@ def get_histogram_normalization_center_scale_ranges(histogram, bins, center_perc
     assert dih is not None, "dataset_iterator package is required for this method"
     mode_value = dih.get_modal_value(histogram, bins)
     mode_percentile = dih.get_percentile_from_value(histogram, bins, mode_value)
-    print("model value: {}, percentile: {}".format(mode_value, mode_percentile))
+    print("model value={}, model percentile={}".format(mode_value, mode_percentile))
     assert mode_percentile<scale_percentile_range[0], "mode percentile is {} and must be lower than lower bound of scale_percentile_range={}".format(mode_percentile, scale_percentile_range)
     percentiles = [max(0, mode_percentile-center_percentile_extent), min(100, mode_percentile+center_percentile_extent)]
     scale_percentile_range = ensure_multiplicity(2, scale_percentile_range)
