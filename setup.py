@@ -12,12 +12,17 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/jeanollion/distnet",
+    download_url = 'https://github.com/jeanollion/distnet/archive/v_01.tar.gz',
     packages=setuptools.find_packages(),
+    keywords = ['Segmentation', 'Tracking', 'SelfAttention', 'Tensorflow', 'Keras'],
     classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: GNU GPLv3",
-        "Operating System :: OS Independent",
+        'Development Status :: 4 - Beta',
+        'Intended Audience :: Science/Research',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Scientific/Engineering :: Image Processing',
+        'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
+        'Programming Language :: Python :: 3',
     ],
     python_requires='>=3',
-    install_requires=['numpy', 'scipy', 'tensorflow', 'keras_preprocessing', 'edt', "dataset_iterator"]
+    install_requires=['numpy', 'scipy', 'tensorflow', 'keras_preprocessing', 'edt', 'dataset_iterator>=0.2']
 )
