@@ -5,10 +5,10 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="distnet",
-    version="0.0.1",
+    version="0.1",
     author="Jean Ollion",
     author_email="jean.ollion@polytechnique.org",
-    description="keras implementation of DistNet, plus utilities for mother machine data analysis with keras",
+    description="keras implementation of DiSTNet & utilities for mother machine data analysis with keras",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/jeanollion/distnet",
@@ -19,5 +19,5 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3',
-    install_requires=['numpy', 'scipy', 'tensorflow', 'keras_preprocessing']
+    install_requires=['numpy', 'scipy', 'tensorflow', 'keras_preprocessing', 'edt', "dataset_iterator"]
 )
