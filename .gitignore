@@ -5,5 +5,5 @@ testCurrent.py
 convert_h5_to_tf.py
 evaluate_model.py
 *.ipynb
-distnet.egg-info/*
+DiST_Net.egg-info/*
 *.tar.gz

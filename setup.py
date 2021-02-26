@@ -4,7 +4,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="distnet",
+    name="DiST_Net",
     version="0.1",
     author="Jean Ollion",
     author_email="jean.ollion@polytechnique.org",
