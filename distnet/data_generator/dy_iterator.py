@@ -33,6 +33,7 @@ class DyIterator(TrackingIterator):
                     channels_next=[next]*3,
                     mask_channels=[1, 2],
                     aug_remove_prob=aug_remove_prob,
+                    aug_all_frames=False,
                     **kwargs)
 
     def _get_batch_by_channel(self, index_array, perform_augmentation, input_only=False):
