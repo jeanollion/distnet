@@ -260,7 +260,7 @@ class ImageDataGeneratorMM(ImageDataGenerator):
         if params.get("speckle_noise", 0)>0:
             img = pp.add_speckle_noise(img, params["speckle_noise"])
         if params.get("gaussian_noise", 0)>0:
-            img = pp.add_speckle_noise(img, params["gaussian_noise"])
+            img = pp.add_gaussian_noise(img, params["gaussian_noise"])
         return img
 
     def _get_corrected_zoom_aspectratio(self, zx, zy, zoom_aspectratio, zx_range, zy_range):
