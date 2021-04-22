@@ -6,4 +6,6 @@ convert_h5_to_tf.py
 evaluate_model.py
 *.ipynb
 DiST_Net.egg-info/*
+dist/*
+build/*
 *.tar.gz
