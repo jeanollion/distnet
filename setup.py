@@ -5,14 +5,14 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="DiST_Net",
-    version="0.1.2",
+    version="0.1.3",
     author="Jean Ollion",
     author_email="jean.ollion@polytechnique.org",
     description="keras implementation of DiSTNet & utilities for mother machine data analysis with keras",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/jeanollion/distnet",
-    download_url = 'https://github.com/jeanollion/distnet/archive/v_01.tar.gz',
+    download_url = 'https://github.com/jeanollion/distnet/archive/v_013.tar.gz',
     packages=setuptools.find_packages(),
     keywords = ['Segmentation', 'Tracking', 'SelfAttention', 'Tensorflow', 'Keras'],
     classifiers=[
