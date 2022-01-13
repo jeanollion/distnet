@@ -108,33 +108,35 @@ class DyIterator(TrackingIterator):
         return all_channels
 
     def _erase_small_objects_at_border(self, labelImage, batch_idx, channel_idxs, channel_idxs_chan, batch_by_channel):
-        labels_to_erase = _get_small_objects_at_boder_to_erase(labelImage, self.erase_cut_cell_length, self.closed_end)
-        if len(labels_to_erase)>0:
+        objects_to_erase = _get_small_objects_at_border_to_erase(labelImage, self.erase_cut_cell_length, self.closed_end)
+        if len(objects_to_erase)>0:
             # erase in all mask image then in label image
-            slice = labelImage == labels_to_erase
-            for mask_chan_idx, c in zip(channel_idxs, channel_idxs_chan):
-                batch_by_channel[mask_chan_idx][batch_idx,...,c][slice]=0
-            labelImage[slice] = 0
+            for label, slice in objects_to_erase.items():
+                mask = labelImage[slice] == label
+                for mask_chan_idx, c in zip(channel_idxs, channel_idxs_chan):
+                    batch_by_channel[mask_chan_idx][batch_idx,...,c][slice][mask]=0
+                labelImage[slice][mask] = 0
 
-def _get_small_objects_at_boder_to_erase(labelIm, min_length, closed_end):
+
+def _get_small_objects_at_border_to_erase(labelIm, min_length, closed_end):
     has_object_down, has_object_up = has_object_at_y_borders(labelIm)
-    res=set()
+    res=dict()
     if closed_end: # only consider lower part
         has_object_up = False
     if has_object_up or has_object_down:
          stop = labelIm.shape[0]
          objects = find_objects(labelIm.astype(np.int))
-         objects = [o[0] if o is not None else None for o in objects] # keep only first dim # none when missing label
          for l, o in enumerate(objects):
              if o is not None:
-                 if (not closed_end and o.start==0 and (o.stop - o.start)<min_length) or (o.stop==stop and (o.stop - o.start)<min_length):
-                     res.add(l+1)
-    return list(res)
+                 if (not closed_end and o[0].start==0 and (o[0].stop - o[0].start)<min_length) or (o[0].stop==stop and (o[0].stop - o[0].start)<min_length): # length along Y axis
+                    res[l+1] = o
+    return res
 
 # dy computation utils
 def _get_prev_lab(prevlabelIm, labelIm, label, center):
-    prev_lab = int(prevlabelIm[int(round(center[0])), int(round(center[1]))])
-    if prev_lab==0: # check that mean value is also 0 in the whole, in case center in not included in object
+    if int(labelIm[int(round(center[0])), int(round(center[1]))]) == label : # in case center is inluced in object -> simply return value @ center
+        prev_lab = int(prevlabelIm[int(round(center[0])), int(round(center[1]))])
+    else:
         prev_lab = int(round(mean(prevlabelIm, labelIm, label)))
     return prev_lab
 
