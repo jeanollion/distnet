@@ -6,6 +6,7 @@ from math import copysign
 import sys
 import itertools
 import edt
+from random import random
 
 class DyIterator(TrackingIterator):
     def __init__(self,
@@ -16,7 +17,7 @@ class DyIterator(TrackingIterator):
         closed_end:bool = True,
         erase_cut_cell_length:int = 10,
         aug_remove_prob:float = 0.05,
-        aug_frame_subsampling = 1, # either int: subsampling interval will be drawn uniformly in [1,aug_frame_subsampling] or callable that generate an subsampling interval (int)
+        aug_frame_subsampling = 1, # either int: subsampling interval will be drawn uniformly in [1,aug_frame_subsampling] or callable that generates a subsampling interval (int)
         **kwargs):
         if len(channel_keywords)!=3:
             raise ValueError('keyword should contain 3 elements in this order: grayscale input images, object labels, object previous labels')
@@ -37,11 +38,14 @@ class DyIterator(TrackingIterator):
                     **kwargs)
 
     def _get_batch_by_channel(self, index_array, perform_augmentation, input_only=False):
-        if self.aug_frame_subsampling!=1 and self.aug_frame_subsampling is not None:
-            if callable(self.aug_frame_subsampling):
-                self.n_frames = self.aug_frame_subsampling()
-            else:
-                self.n_frames=np.random.randint(self.aug_frame_subsampling)+1
+        if self.aug_remove_prob>0 and random() < self.aug_remove_prob:
+            self.n_frames = 0 # flag that aug_remove = true
+        else:
+            if self.aug_frame_subsampling!=1 and self.aug_frame_subsampling is not None:
+                if callable(self.aug_frame_subsampling):
+                    self.n_frames = self.aug_frame_subsampling()
+                else:
+                    self.n_frames=np.random.randint(self.aug_frame_subsampling)+1
         return super()._get_batch_by_channel(index_array, perform_augmentation, input_only)
 
     def _get_input_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
