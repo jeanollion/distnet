@@ -15,7 +15,7 @@ class DyIterator(TrackingIterator):
         return_categories:bool = True,
         closed_end:bool = True,
         erase_cut_cell_length:int = 10,
-        aug_remove_prob:float = 0.03,
+        aug_remove_prob:float = 0.05,
         aug_frame_subsampling = 1, # either int: subsampling interval will be drawn uniformly in [1,aug_frame_subsampling] or callable that generate an subsampling interval (int)
         **kwargs):
         if len(channel_keywords)!=3:

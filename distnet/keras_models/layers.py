@@ -141,7 +141,7 @@ class Conv3DYXC(Layer):
         self.ker_center = [(k-1)//2 for k in kernelYX]
         if padding=="same":
             padding = "CONSTANT"
-        self._name = kwargs.pop('name', None)
+        self._name = kwargs.pop('name', "Conv3DYXC")
         self.padding_constant_value = kwargs.pop('constant_values', 0)
         self.input_spec = InputSpec(ndim=4)
         self.padding = padding
@@ -170,5 +170,3 @@ class Conv3DYXC(Layer):
         conv_in = input_tensor[...,tf.newaxis] #BYXC1 (convert to 5D tensor)
         conv = self.convL(conv_in) # BYX1F (valid padding on last conv axis -> size 1)
         return conv[:, :, :, 0, :] # BYXF
-
-# TODO get_config -> attributes of convL ?
