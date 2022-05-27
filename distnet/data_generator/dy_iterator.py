@@ -37,16 +37,17 @@ class DyIterator(TrackingIterator):
                     aug_all_frames=False,
                     **kwargs)
 
-    def _get_batch_by_channel(self, index_array, perform_augmentation, input_only=False):
+    def _get_batch_by_channel(self, index_array, perform_augmentation, input_only=False, perform_elasticdeform=True, perform_tiling=True, **kwargs):
         if self.aug_remove_prob>0 and random() < self.aug_remove_prob:
-            self.n_frames = 0 # flag that aug_remove = true
+            n_frames = 0 # flag that aug_remove = true
         else:
             if self.aug_frame_subsampling!=1 and self.aug_frame_subsampling is not None:
                 if callable(self.aug_frame_subsampling):
-                    self.n_frames = self.aug_frame_subsampling()
+                    n_frames = self.aug_frame_subsampling()
                 else:
-                    self.n_frames=np.random.randint(self.aug_frame_subsampling)+1
-        return super()._get_batch_by_channel(index_array, perform_augmentation, input_only)
+                    n_frames=np.random.randint(self.aug_frame_subsampling)+1
+        kwargs.update({"n_frames":n_frames})
+        return super()._get_batch_by_channel(index_array, perform_augmentation, input_only, perform_elasticdeform, perform_tiling, **kwargs)
 
     def _get_input_batch(self, batch_by_channel, ref_chan_idx, aug_param_array):
         input = super()._get_input_batch(batch_by_channel, ref_chan_idx, aug_param_array)
